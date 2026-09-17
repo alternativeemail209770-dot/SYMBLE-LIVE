@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Symble Live</title>
+<style>
+  :root {
+    --bg: #0f1020;
+    --bg-panel: #171833;
+    --bg-panel-2: #1f2144;
+    --accent: #ff3d81;
+    --accent-2: #34e0a1;
+    --accent-3: #ffd23f;
+    --text: #f4f4fb;
+    --text-dim: #9a9cc0;
+    --danger: #ff5252;
+    --radius: 16px;
+    --vh: 1vh; /* recalculated by JS to fix mobile viewport height */
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden;
+  }
+  #app {
+    height: calc(var(--vh) * 100);
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: linear-gradient(90deg, #1b1c3d, #2a1b3d);
+    border-bottom: 1px solid #2c2e55;
+  }
+  header h1 {
+    font-size: 18px; margin: 0; letter-spacing: 0.5px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-3));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .status-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--danger); display: inline-block; margin-right: 6px;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .status-dot.connected { background: var(--accent-2); }
+  .status-dot.connecting { background: var(--accent-3); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .header-right { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
+  .icon-btn {
+    background: var(--bg-panel-2); border: 1px solid #33356a; color: var(--text);
+    border-radius: 10px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+  }
+
+  main {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 10px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .board {
+    background: var(--bg-panel);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    border: 1px solid #2c2e55;
+    position: relative;
+    overflow: hidden;
+  }
+  .board .meta-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: var(--text-dim); margin-bottom: 8px;
+  }
+  .stars { color: var(--accent-3); }
+  .emoji-clue { font-size: 54px; margin: 6px 0 10px; line-height: 1.1; }
+  .blanks {
+    font-family: "Courier New", monospace;
+    font-size: 26px; letter-spacing: 3px; font-weight: 700;
+    word-break: break-word;
+    min-height: 34px;
+  }
+  .timer-wrap {
+    margin-top: 12px; height: 8px; border-radius: 6px; background: #2b2d55; overflow: hidden;
+  }
+  .timer-bar { height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent-3)); width: 100%; transition: width 0.25s linear; }
+  .points-badge {
+    margin-top: 8px; font-size: 13px; color: var(--accent-3); font-weight: 600;
+  }
+  .idle-msg { padding: 30px 10px; color: var(--text-dim); font-size: 14px; }
+  .reveal-banner {
+    position: absolute; inset: 0; background: rgba(15,16,32,0.92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; animation: fadein 0.2s ease-in;
+  }
+  @keyframes fadein { from { opacity: 0 } to { opacity: 1 } }
+  .reveal-banner .answer { font-size: 22px; font-weight: 700; color: var(--accent-3); }
+  .reveal-banner .winner { font-size: 16px; color: var(--accent-2); }
+  .reveal-banner .nowinner { font-size: 14px; color: var(--text-dim); }
+
+  .columns { display: flex; gap: 12px; flex: 1 1 auto; min-height: 220px; }
+  .panel {
+    background: var(--bg-panel); border-radius: var(--radius); border: 1px solid #2c2e55;
+    display: flex; flex-direction: column; overflow: hidden; flex: 1 1 0;
+  }
+  .panel h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);
+    margin: 0; padding: 10px 12px; border-bottom: 1px solid #2c2e55; flex: 0 0 auto;
+  }
+  .panel .body { overflow-y: auto; padding: 8px 10px; flex: 1 1 auto; }
+
+  .lb-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: 13px; border-bottom: 1px solid #23254a; }
+  .lb-rank { width: 20px; text-align: center; color: var(--text-dim); font-weight: 700; }
+  .lb-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-score { font-weight: 700; color: var(--accent-3); }
+  .lb-row.top1 .lb-rank { color: gold; }
+  .lb-row.top2 .lb-rank { color: silver; }
+  .lb-row.top3 .lb-rank { color: #cd7f32; }
+  .empty-note { color: var(--text-dim); font-size: 12px; padding: 8px 2px; }
+
+  .chat-row { font-size: 13px; padding: 4px 2px; word-break: break-word; }
+  .chat-row .u { color: var(--accent-2); font-weight: 600; }
+  .chat-row.correct { background: rgba(52,224,161,0.12); border-radius: 8px; padding: 4px 6px; }
+  .chat-row .tag { font-size: 10px; color: var(--text-dim); margin-left: 4px; }
+
+  .diagnostics {
+    background: var(--bg-panel); border-radius: var(--radius); border: 1px solid #2c2e55; padding: 10px 12px;
+    font-size: 12px; color: var(--text-dim);
+  }
+  .diagnostics.collapsed .diag-body { display: none; }
+  .diag-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 8px; }
+  .diag-grid .k { color: var(--text-dim); }
+  .diag-grid .v { color: var(--text); font-weight: 600; word-break: break-word; }
+  .diag-log { margin-top: 8px; max-height: 90px; overflow-y: auto; border-top: 1px solid #2c2e55; padding-top: 6px; }
+
+  footer {
+    flex: 0 0 auto;
+    background: var(--bg-panel-2);
+    border-top: 1px solid #33356a;
+    position: sticky; bottom: 0;
+  }
+  .host-toggle {
+    width: 100%; padding: 10px; background: none; border: none; color: var(--text);
+    font-size: 13px; display: flex; justify-content: center; gap: 6px; align-items: center; cursor: pointer;
+  }
+  .host-drawer { display: none; padding: 10px 12px 14px; max-height: 50vh; overflow-y: auto; }
+  .host-drawer.open { display: block; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tab-btn {
+    background: var(--bg-panel); border: 1px solid #33356a; color: var(--text-dim);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+  }
+  .tab-btn.active { color: var(--text); border-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  label { display: block; font-size: 11px; color: var(--text-dim); margin: 8px 0 3px; }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid #33356a;
+    background: #12132a; color: var(--text); font-size: 14px;
+  }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1 1 0; }
+  button.primary {
+    margin-top: 10px; width: 100%; padding: 10px; border: none; border-radius: 10px;
+    background: linear-gradient(90deg, var(--accent), #ff7ab0); color: white; font-weight: 700;
+    font-size: 14px; cursor: pointer;
+  }
+  button.secondary {
+    margin-top: 8px; width: 100%; padding: 9px; border-radius: 10px;
+    background: var(--bg-panel); border: 1px solid #33356a; color: var(--text); font-size: 13px; cursor: pointer;
+  }
+  button.danger { background: rgba(255,82,82,0.15); border-color: var(--danger); color: var(--danger); }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .switch { position: relative; width: 42px; height: 24px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; cursor: pointer; inset: 0; background-color: #33356a; border-radius: 24px; transition: 0.2s;
+  }
+  .slider:before {
+    position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+    background-color: white; border-radius: 50%; transition: 0.2s;
+  }
+  input:checked + .slider { background-color: var(--accent-2); }
+  input:checked + .slider:before { transform: translateX(18px); }
+  .small-note { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+  .error-msg { color: var(--danger); font-size: 12px; margin-top: 6px; min-height: 14px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <h1>✨ SYMBLE LIVE</h1>
+    <div class="header-right">
+      <span><span class="status-dot" id="statusDot"></span><span id="statusText">Disconnected</span></span>
+      <button class="icon-btn" id="diagToggleBtn">Diagnostics</button>
+    </div>
+  </header>
+
+  <main>
+
+    <section class="board" id="board">
+      <div class="reveal-banner" id="revealBanner" style="display:none;">
+        <div class="answer" id="revealAnswer"></div>
+        <div class="winner" id="revealWinnerYes" style="display:none;"></div>
+        <div class="nowinner" id="revealWinnerNo" style="display:none;">Nobody guessed it in time!</div>
+      </div>
+
+      <div class="meta-row">
+        <span id="categoryLabel">Waiting to start...</span>
+        <span class="stars" id="difficultyStars"></span>
+      </div>
+      <div class="emoji-clue" id="emojiClue">🎮</div>
+      <div class="blanks" id="blanksDisplay"></div>
+      <div class="timer-wrap"><div class="timer-bar" id="timerBar"></div></div>
+      <div class="points-badge" id="pointsBadge"></div>
+      <div class="idle-msg" id="idleMsg">Press "Start Game" in Host Controls below to begin!</div>
+    </section>
+
+    <section class="columns">
+      <div class="panel">
+        <h2>🏆 Top 10</h2>
+        <div class="body" id="leaderboardBody"><div class="empty-note">No scores yet - be the first!</div></div>
+      </div>
+      <div class="panel">
+        <h2>💬 Live Chat</h2>
+        <div class="body" id="chatBody"><div class="empty-note">Chat messages will appear here.</div></div>
+      </div>
+    </section>
+
+    <section class="diagnostics collapsed" id="diagPanel">
+      <div class="diag-head" id="diagHead">
+        <span>🔧 On-Screen Diagnostics</span>
+        <span id="diagCaret">▸</span>
+      </div>
+      <div class="diag-body">
+        <div class="diag-grid">
+          <span class="k">Connection</span><span class="v" id="diagConn">disconnected</span>
+          <span class="k">All Raw Events</span><span class="v" id="diagRawCount">0</span>
+          <span class="k">Last Received</span><span class="v" id="diagLast">-</span>
+          <span class="k">Test Mode</span><span class="v" id="diagTestMode">off</span>
+        </div>
+        <div class="diag-log" id="diagLog"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <button class="host-toggle" id="hostToggleBtn">🛠️ Host Controls ▾</button>
+    <div class="host-drawer" id="hostDrawer">
+
+      <div id="loginBox">
+        <label>Host Password</label>
+        <input type="password" id="hostPasswordInput" placeholder="Enter host password" />
+        <button class="primary" id="hostLoginBtn">Unlock Host Controls</button>
+        <div class="error-msg" id="loginError"></div>
+      </div>
+
+      <div id="controlsBox" style="display:none;">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="connect">Connect</button>
+          <button class="tab-btn" data-tab="game">Game</button>
+          <button class="tab-btn" data-tab="message">Message</button>
+          <button class="tab-btn" data-tab="words">Add Word</button>
+          <button class="tab-btn" data-tab="test">Test Mode</button>
+        </div>
+
+        <div class="tab-content active" data-tab="connect">
+          <label>TikTok Username (without @)</label>
+          <input type="text" id="tiktokUsername" placeholder="e.g. officialgeilegisela" />
+          <label>Euler Stream Signing API Key</label>
+          <input type="text" id="signApiKey" placeholder="Paste your eulerstream.com API key" />
+          <div class="row">
+            <button class="primary" id="connectBtn">Connect to LIVE</button>
+            <button class="secondary danger" id="disconnectBtn">Disconnect</button>
+          </div>
+          <div class="small-note">Get a free key at eulerstream.com. Your stream must be LIVE before connecting.</div>
+        </div>
+
+        <div class="tab-content" data-tab="game">
+          <div class="row">
+            <button class="primary" id="startGameBtn">▶ Start Game</button>
+            <button class="secondary" id="stopGameBtn">■ Stop Game</button>
+          </div>
+          <button class="secondary" id="skipRoundBtn">⏭ Skip Round</button>
+          <button class="secondary danger" id="resetLbBtn">Reset Leaderboard</button>
+        </div>
+
+        <div class="tab-content" data-tab="message">
+          <label>Name (optional)</label>
+          <input type="text" id="hostMsgName" placeholder="Host" />
+          <label>Message / Guess</label>
+          <input type="text" id="hostMsgText" placeholder="Type a comment or an answer..." />
+          <button class="primary" id="sendHostMsgBtn">Send</button>
+          <div class="small-note">This feeds directly into the game, just like a real TikTok comment.</div>
+        </div>
+
+        <div class="tab-content" data-tab="words">
+          <label>Answer</label>
+          <input type="text" id="newAnswer" placeholder="e.g. PIZZA NIGHT" />
+          <label>Emoji clue (paste emojis, spaces between)</label>
+          <input type="text" id="newEmojis" placeholder="🍕 🌙" />
+          <label>Category</label>
+          <input type="text" id="newCategory" placeholder="Food & Fun" />
+          <label>Difficulty</label>
+          <select id="newDifficulty">
+            <option value="1">1 - Easy</option>
+            <option value="2">2 - Medium</option>
+            <option value="3">3 - Hard</option>
+          </select>
+          <button class="primary" id="addWordBtn">Add to Word Bank</button>
+          <div class="error-msg" id="addWordError"></div>
+        </div>
+
+        <div class="tab-content" data-tab="test">
+          <div class="toggle-row">
+            <span>Simulate fake TikTok chat</span>
+            <label class="switch">
+              <input type="checkbox" id="testModeToggle" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="small-note">Generates random fake viewer messages (and occasional correct guesses) every ~1.8s so you can test the whole game without going LIVE.</div>
+        </div>
+
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---- Mobile viewport height fix (don't trust raw 100vh) ----
+  function setVh() {
+    document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+  }
+  setVh();
+  window.addEventListener('resize', setVh);
+  window.addEventListener('orientationchange', setVh);
+
+  const socket = io();
+
+  // ---- Element refs ----
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  const categoryLabel = document.getElementById('categoryLabel');
+  const difficultyStars = document.getElementById('difficultyStars');
+  const emojiClue = document.getElementById('emojiClue');
+  const blanksDisplay = document.getElementById('blanksDisplay');
+  const timerBar = document.getElementById('timerBar');
+  const pointsBadge = document.getElementById('pointsBadge');
+  const idleMsg = document.getElementById('idleMsg');
+  const revealBanner = document.getElementById('revealBanner');
+  const revealAnswer = document.getElementById('revealAnswer');
+  const revealWinnerYes = document.getElementById('revealWinnerYes');
+  const revealWinnerNo = document.getElementById('revealWinnerNo');
+
+  const leaderboardBody = document.getElementById('leaderboardBody');
+  const chatBody = document.getElementById('chatBody');
+
+  const diagPanel = document.getElementById('diagPanel');
+  const diagHead = document.getElementById('diagHead');
+  const diagCaret = document.getElementById('diagCaret');
+  const diagConn = document.getElementById('diagConn');
+  const diagRawCount = document.getElementById('diagRawCount');
+  const diagLast = document.getElementById('diagLast');
+  const diagTestMode = document.getElementById('diagTestMode');
+  const diagLog = document.getElementById('diagLog');
+  const diagToggleBtn = document.getElementById('diagToggleBtn');
+
+  const hostToggleBtn = document.getElementById('hostToggleBtn');
+  const hostDrawer = document.getElementById('hostDrawer');
+  const loginBox = document.getElementById('loginBox');
+  const controlsBox = document.getElementById('controlsBox');
+  const hostPasswordInput = document.getElementById('hostPasswordInput');
+  const hostLoginBtn = document.getElementById('hostLoginBtn');
+  const loginError = document.getElementById('loginError');
+
+  let authed = false;
+  let currentEndsAt = 0;
+  let currentTimeLimit = 1;
+  let tickTimer = null;
+
+  // ---- Helpers ----
+  function fmtTime(ms) {
+    return (ms / 1000).toFixed(0) + 's';
+  }
+
+  function addLogLine(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    div.style.borderBottom = '1px solid #23254a';
+    div.style.padding = '2px 0';
+    diagLog.prepend(div);
+    while (diagLog.children.length > 20) diagLog.removeChild(diagLog.lastChild);
+  }
+
+  // ---- Connection status ----
+  socket.on('connect', () => addLogLine('Browser connected to game server.'));
+  socket.on('disconnect', () => addLogLine('Browser lost connection to game server (will auto-reconnect).'));
+
+  socket.on('server:config', (cfg) => {
+    if (cfg.defaultUsername) document.getElementById('tiktokUsername').value = cfg.defaultUsername;
+  });
+
+  socket.on('tiktok:status', (payload) => {
+    statusDot.className = 'status-dot ' + (payload.state === 'connected' ? 'connected' : payload.state === 'connecting' ? 'connecting' : '');
+    statusText.textContent = payload.state.charAt(0).toUpperCase() + payload.state.slice(1);
+    addLogLine('[TikTok] ' + payload.state + ': ' + payload.message);
+  });
+
+  // ---- Diagnostics ----
+  socket.on('diagnostics:update', (d) => {
+    diagConn.textContent = d.connectionState + (d.connectionMessage ? ' - ' + d.connectionMessage : '');
+    diagRawCount.textContent = d.rawEventCount;
+    diagLast.textContent = d.lastReceived ? (d.lastReceived.username + ': ' + d.lastReceived.text) : '-';
+  });
+
+  socket.on('testMode:status', (enabled) => {
+    diagTestMode.textContent = enabled ? 'ON' : 'off';
+    document.getElementById('testModeToggle').checked = enabled;
+  });
+
+  diagHead.addEventListener('click', () => {
+    diagPanel.classList.toggle('collapsed');
+    diagCaret.textContent = diagPanel.classList.contains('collapsed') ? '▸' : '▾';
+  });
+  diagToggleBtn.addEventListener('click', () => diagHead.click());
+
+  // ---- Game state rendering ----
+  function renderState(state) {
+    if (!state || state.status === 'idle') {
+      idleMsg.style.display = 'block';
+      categoryLabel.textContent = 'Waiting to start...';
+      difficultyStars.textContent = '';
+      emojiClue.textContent = '🎮';
+      blanksDisplay.textContent = '';
+      pointsBadge.textContent = '';
+      timerBar.style.width = '0%';
+      revealBanner.style.display = 'none';
+      clearInterval(tickTimer);
+      return;
+    }
+    idleMsg.style.display = 'none';
+    categoryLabel.textContent = (state.category || 'Round') + ' - Round #' + state.roundNumber;
+    difficultyStars.textContent = '★'.repeat(state.difficulty || 1) + '☆'.repeat(3 - (state.difficulty || 1));
+    emojiClue.textContent = (state.emojis || []).join('  ');
+    blanksDisplay.textContent = state.blanks || '';
+    pointsBadge.textContent = state.currentPoints ? ('Worth ' + state.currentPoints + ' points right now') : '';
+
+    currentEndsAt = state.endsAt || 0;
+    currentTimeLimit = state.timeLimitMs || 1;
+
+    if (state.status === 'reveal') {
+      revealBanner.style.display = 'flex';
+      revealAnswer.textContent = state.answer || '';
+      if (state.winner) {
+        revealWinnerYes.style.display = 'block';
+        revealWinnerNo.style.display = 'none';
+        revealWinnerYes.textContent = '🎉 ' + state.winner.name + ' guessed it! +' + state.winner.points + ' pts';
+      } else {
+        revealWinnerYes.style.display = 'none';
+        revealWinnerNo.style.display = 'block';
+      }
+    } else {
+      revealBanner.style.display = 'none';
+    }
+
+    clearInterval(tickTimer);
+    if (state.status === 'active') {
+      updateTimerBar();
+      tickTimer = setInterval(updateTimerBar, 200);
+    }
+  }
+
+  function updateTimerBar() {
+    const remaining = Math.max(0, currentEndsAt - Date.now());
+    const pct = Math.max(0, Math.min(100, (remaining / currentTimeLimit) * 100));
+    timerBar.style.width = pct + '%';
+  }
+
+  socket.on('game:state', renderState);
+
+  // ---- Leaderboard ----
+  function renderLeaderboard(list) {
+    if (!list || !list.length) {
+      leaderboardBody.innerHTML = '<div class="empty-note">No scores yet - be the first!</div>';
+      return;
+    }
+    const medalClass = ['top1', 'top2', 'top3'];
+    leaderboardBody.innerHTML = list.map((entry, i) => `
+      <div class="lb-row ${medalClass[i] || ''}">
+        <span class="lb-rank">${i + 1}</span>
+        <span class="lb-name">${escapeHtml(entry.name)}</span>
+        <span class="lb-score">${entry.score}</span>
+      </div>
+    `).join('');
+  }
+  socket.on('game:leaderboard', renderLeaderboard);
+
+  // ---- Chat feed ----
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function renderChatMessage(msg) {
+    if (chatBody.querySelector('.empty-note')) chatBody.innerHTML = '';
+    const row = document.createElement('div');
+    row.className = 'chat-row' + (msg.correct ? ' correct' : '');
+    row.innerHTML = `<span class="u">${escapeHtml(msg.username)}</span>: ${escapeHtml(msg.text)}` +
+      (msg.correct ? ` <span class="tag">✅ +${msg.points}</span>` : '') +
+      (msg.source === 'test' ? ' <span class="tag">(test)</span>' : '');
+    chatBody.appendChild(row);
+    chatBody.scrollTop = chatBody.scrollHeight;
+    while (chatBody.children.length > 100) chatBody.removeChild(chatBody.firstChild);
+  }
+  socket.on('chat:message', renderChatMessage);
+
+  // ---- Host drawer open/close ----
+  hostToggleBtn.addEventListener('click', () => {
+    hostDrawer.classList.toggle('open');
+  });
+
+  hostLoginBtn.addEventListener('click', () => {
+    const pw = hostPasswordInput.value;
+    socket.emit('host:auth', pw, (res) => {
+      if (res && res.ok) {
+        authed = true;
+        loginBox.style.display = 'none';
+        controlsBox.style.display = 'block';
+        loginError.textContent = '';
+      } else {
+        loginError.textContent = 'Incorrect password.';
+      }
+    });
+  });
+
+  socket.on('host:error', (msg) => addLogLine('[Host] ' + msg));
+
+  // ---- Tabs ----
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelector('.tab-content[data-tab="' + btn.dataset.tab + '"]').classList.add('active');
+    });
+  });
+
+  // ---- Host actions ----
+  document.getElementById('connectBtn').addEventListener('click', () => {
+    socket.emit('host:connectTikTok', {
+      username: document.getElementById('tiktokUsername').value,
+      signApiKey: document.getElementById('signApiKey').value,
+    });
+  });
+  document.getElementById('disconnectBtn').addEventListener('click', () => {
+    socket.emit('host:disconnectTikTok');
+  });
+  document.getElementById('startGameBtn').addEventListener('click', () => socket.emit('host:startGame'));
+  document.getElementById('stopGameBtn').addEventListener('click', () => socket.emit('host:stopGame'));
+  document.getElementById('skipRoundBtn').addEventListener('click', () => socket.emit('host:skipRound'));
+  document.getElementById('resetLbBtn').addEventListener('click', () => {
+    if (confirm('Reset the leaderboard? This cannot be undone.')) socket.emit('host:resetLeaderboard');
+  });
+
+  document.getElementById('sendHostMsgBtn').addEventListener('click', () => {
+    const name = document.getElementById('hostMsgName').value;
+    const text = document.getElementById('hostMsgText').value;
+    if (!text.trim()) return;
+    socket.emit('host:sendMessage', { name, text });
+    document.getElementById('hostMsgText').value = '';
+  });
+  document.getElementById('hostMsgText').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('sendHostMsgBtn').click();
+  });
+
+  document.getElementById('addWordBtn').addEventListener('click', () => {
+    const entry = {
+      answer: document.getElementById('newAnswer').value,
+      emojis: document.getElementById('newEmojis').value.split(/\s+/).filter(Boolean),
+      category: document.getElementById('newCategory').value,
+      difficulty: document.getElementById('newDifficulty').value,
+    };
+    socket.emit('host:addWord', entry, (res) => {
+      const err = document.getElementById('addWordError');
+      if (res && res.ok) {
+        err.style.color = 'var(--accent-2)';
+        err.textContent = 'Added! It will show up in future rounds.';
+        document.getElementById('newAnswer').value = '';
+        document.getElementById('newEmojis').value = '';
+        document.getElementById('newCategory').value = '';
+      } else {
+        err.style.color = 'var(--danger)';
+        err.textContent = (res && res.error) || 'Something went wrong.';
+      }
+    });
+  });
+
+  document.getElementById('testModeToggle').addEventListener('change', (e) => {
+    socket.emit('host:testMode', e.target.checked);
+  });
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,431 @@
+import 'dotenv/config';
+import express from 'express';
+import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { TikTokLiveConnection, WebcastEvent, ControlEvent } from 'tiktok-live-connector';
+import { GameEngine } from './gameEngine.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ---------------------------------------------------------------------------
+// 0. Crash prevention - a single bad message must never take the server down
+// ---------------------------------------------------------------------------
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL-CAUGHT] Uncaught exception (server kept running):', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL-CAUGHT] Unhandled promise rejection (server kept running):', reason);
+});
+
+/** Run any function safely - log and continue instead of crashing. */
+function safe(label, fn) {
+  return (...args) => {
+    try {
+      return fn(...args);
+    } catch (err) {
+      console.error(`[SAFE-CATCH] Error in ${label}:`, err);
+      return undefined;
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 1. Basic setup
+// ---------------------------------------------------------------------------
+const PORT = process.env.PORT || 3000;
+const HOST_PASSWORD = process.env.HOST_PASSWORD || 'changeme123';
+const DEFAULT_TIKTOK_USERNAME = process.env.DEFAULT_TIKTOK_USERNAME || '';
+const ENV_SIGN_API_KEY = process.env.SIGN_API_KEY || '';
+
+const app = express();
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/healthz', (req, res) => res.status(200).send('ok')); // Render health check
+
+const server = http.createServer(app);
+const io = new SocketIOServer(server, { cors: { origin: '*' } });
+
+// ---------------------------------------------------------------------------
+// 2. Word bank (built-in + any host-added custom words), loaded from disk
+// ---------------------------------------------------------------------------
+const WORDS_PATH = path.join(__dirname, 'words.json');
+const CUSTOM_WORDS_PATH = path.join(__dirname, 'words-custom.json');
+const LEADERBOARD_PATH = path.join(__dirname, 'leaderboard.json');
+
+function loadJsonSafe(filePath, fallback) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error(`[WORDS] Failed to read ${filePath}:`, err);
+    return fallback;
+  }
+}
+
+const builtInWords = loadJsonSafe(WORDS_PATH, []);
+const customWords = loadJsonSafe(CUSTOM_WORDS_PATH, []);
+const engine = new GameEngine([...builtInWords, ...customWords]);
+
+// Restore leaderboard across restarts, if present.
+const savedLeaderboard = loadJsonSafe(LEADERBOARD_PATH, null);
+if (savedLeaderboard && typeof savedLeaderboard === 'object') {
+  try {
+    for (const [key, val] of Object.entries(savedLeaderboard)) {
+      engine.leaderboard.set(key, val);
+    }
+  } catch (err) {
+    console.error('[LEADERBOARD] Failed to restore:', err);
+  }
+}
+function persistLeaderboard() {
+  try {
+    const obj = Object.fromEntries(engine.leaderboard.entries());
+    fs.writeFileSync(LEADERBOARD_PATH, JSON.stringify(obj, null, 2));
+  } catch (err) {
+    console.error('[LEADERBOARD] Failed to persist:', err);
+  }
+}
+setInterval(safe('persistLeaderboard', persistLeaderboard), 20000);
+
+// ---------------------------------------------------------------------------
+// 3. Diagnostics counters (shown on-screen so a non-coder can self-debug)
+// ---------------------------------------------------------------------------
+const diagnostics = {
+  rawEventCount: 0,
+  lastReceived: null, // { username, text, ts }
+  connectionState: 'disconnected', // disconnected | connecting | connected | error
+  connectionMessage: '',
+  loggedSamples: 0,
+};
+
+function broadcastDiagnostics() {
+  io.emit('diagnostics:update', diagnostics);
+}
+
+// ---------------------------------------------------------------------------
+// 4. TikTok LIVE connection management
+// ---------------------------------------------------------------------------
+let tiktokConnection = null;
+let reconnectAttempts = 0;
+const MAX_RETRIES = 3;
+
+function extractChatFields(data) {
+  // Robust fallback chain - never trust a single hardcoded field name.
+  const text =
+    data?.comment ?? data?.content ?? data?.text ?? data?.message ?? data?.msg ?? '';
+  const username =
+    data?.user?.uniqueId ??
+    data?.user?.nickname ??
+    data?.uniqueId ??
+    data?.nickname ??
+    data?.user?.displayId ??
+    'unknown_user';
+  const displayName =
+    data?.user?.nickname ?? data?.nickname ?? data?.user?.uniqueId ?? username;
+  return { text: String(text || ''), username: String(username || 'unknown_user'), displayName: String(displayName || username) };
+}
+
+function wireConnectionEvents(connection) {
+  connection.on(
+    ControlEvent.CONNECTED,
+    safe('tiktok:connected', (state) => {
+      reconnectAttempts = 0;
+      diagnostics.connectionState = 'connected';
+      diagnostics.connectionMessage = `Connected to room ${state?.roomId || ''}`;
+      broadcastDiagnostics();
+      io.emit('tiktok:status', { state: 'connected', message: diagnostics.connectionMessage });
+    })
+  );
+
+  connection.on(
+    ControlEvent.DISCONNECTED,
+    safe('tiktok:disconnected', ({ code, reason } = {}) => {
+      diagnostics.connectionState = 'disconnected';
+      diagnostics.connectionMessage = reason || `Disconnected (code ${code ?? 'n/a'})`;
+      broadcastDiagnostics();
+      io.emit('tiktok:status', { state: 'disconnected', message: diagnostics.connectionMessage });
+    })
+  );
+
+  connection.on(
+    ControlEvent.ERROR,
+    safe('tiktok:error', ({ info, exception } = {}) => {
+      console.error('[TIKTOK ERROR]', info, exception);
+      diagnostics.connectionState = 'error';
+      diagnostics.connectionMessage = String(info || exception?.message || 'Unknown error');
+      broadcastDiagnostics();
+      io.emit('tiktok:status', { state: 'error', message: diagnostics.connectionMessage });
+    })
+  );
+
+  connection.on(
+    WebcastEvent.CHAT,
+    safe('tiktok:chat', (data) => {
+      // One-time raw shape logging so a developer can inspect real payloads.
+      if (diagnostics.loggedSamples < 5) {
+        diagnostics.loggedSamples += 1;
+        console.log('[RAW CHAT SAMPLE]', JSON.stringify(data));
+      }
+
+      const { text, username, displayName } = extractChatFields(data);
+
+      diagnostics.rawEventCount += 1;
+      diagnostics.lastReceived = { username: displayName, text, ts: Date.now() };
+      broadcastDiagnostics();
+
+      const result = engine.handleGuess(username, displayName, text);
+      io.emit('chat:message', {
+        username: displayName,
+        text,
+        ts: Date.now(),
+        correct: Boolean(result && result.correct),
+        points: result?.points || 0,
+        source: 'tiktok',
+      });
+    })
+  );
+}
+
+async function connectToTikTok(username, signApiKey) {
+  const cleanUsername = String(username || '').replace(/^@/, '').trim();
+  if (!cleanUsername) {
+    io.emit('tiktok:status', { state: 'error', message: 'Please enter a TikTok username.' });
+    return;
+  }
+
+  if (tiktokConnection) {
+    try {
+      await tiktokConnection.disconnect();
+    } catch (err) {
+      console.error('[TIKTOK] Error disconnecting previous connection:', err);
+    }
+    tiktokConnection = null;
+  }
+
+  const apiKey = signApiKey || ENV_SIGN_API_KEY;
+  if (!apiKey) {
+    io.emit('tiktok:status', {
+      state: 'error',
+      message: 'A Euler Stream signing API key is required. Paste it into the Host Controls panel.',
+    });
+    return;
+  }
+
+  diagnostics.connectionState = 'connecting';
+  diagnostics.connectionMessage = `Connecting to @${cleanUsername}...`;
+  broadcastDiagnostics();
+  io.emit('tiktok:status', { state: 'connecting', message: diagnostics.connectionMessage });
+
+  const connection = new TikTokLiveConnection(cleanUsername, { signApiKey: apiKey });
+  wireConnectionEvents(connection);
+  tiktokConnection = connection;
+
+  let attempt = 0;
+  while (attempt < MAX_RETRIES) {
+    try {
+      const state = await connection.connect();
+      console.log(`[TIKTOK] Connected to roomId ${state.roomId}`);
+      return;
+    } catch (err) {
+      attempt += 1;
+      console.error(`[TIKTOK] Connect attempt ${attempt} failed:`, err?.message || err);
+      diagnostics.connectionMessage = `Attempt ${attempt}/${MAX_RETRIES} failed: ${err?.message || err}`;
+      diagnostics.connectionState = attempt < MAX_RETRIES ? 'connecting' : 'error';
+      broadcastDiagnostics();
+      io.emit('tiktok:status', { state: diagnostics.connectionState, message: diagnostics.connectionMessage });
+
+      if (attempt >= MAX_RETRIES) {
+        io.emit('tiktok:status', {
+          state: 'error',
+          message:
+            'Could not connect after 3 attempts. Make sure the username is correct, the account is currently LIVE, and your signing key is valid.',
+        });
+        return;
+      }
+      const backoffMs = 2000 * attempt; // 2s, 4s, 6s
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+  }
+}
+
+async function disconnectFromTikTok() {
+  if (tiktokConnection) {
+    try {
+      await tiktokConnection.disconnect();
+    } catch (err) {
+      console.error('[TIKTOK] Error during manual disconnect:', err);
+    }
+    tiktokConnection = null;
+  }
+  diagnostics.connectionState = 'disconnected';
+  diagnostics.connectionMessage = 'Disconnected by host.';
+  broadcastDiagnostics();
+  io.emit('tiktok:status', { state: 'disconnected', message: diagnostics.connectionMessage });
+}
+
+// ---------------------------------------------------------------------------
+// 5. Game engine -> broadcast bridge
+// ---------------------------------------------------------------------------
+engine.on('stateChanged', safe('emit:stateChanged', (state) => io.emit('game:state', state)));
+engine.on('leaderboardUpdated', safe('emit:leaderboard', (lb) => io.emit('game:leaderboard', lb)));
+engine.on('roundEnded', safe('emit:roundEnded', (payload) => io.emit('game:roundEnded', payload)));
+engine.on('wordBankUpdated', safe('emit:wordBank', (count) => io.emit('game:wordBankSize', count)));
+
+// ---------------------------------------------------------------------------
+// 6. Test mode - simulate fake chat locally without going LIVE
+// ---------------------------------------------------------------------------
+const FAKE_USERS = ['sparkle_fan22', 'tiktok_lurker', 'moon.child', 'xX_gamerpro_Xx', 'lisa.loves.cats', 'big_dave99'];
+const FAKE_CHATTER = ['hi!', 'lol', 'omg', 'no way', '???', 'love this game', 'wait what', 'hmm', '😂😂😂', 'lets gooo'];
+let testModeTimer = null;
+
+function startTestMode() {
+  stopTestMode();
+  testModeTimer = setInterval(
+    safe('testMode:tick', () => {
+      const user = FAKE_USERS[Math.floor(Math.random() * FAKE_USERS.length)];
+      let text;
+      const state = engine.getPublicState();
+      // ~30% of the time, if a round is active, send a genuine guess at the answer.
+      if (state.status === 'active' && Math.random() < 0.3 && engine.current) {
+        text = engine.current.answer;
+      } else {
+        text = FAKE_CHATTER[Math.floor(Math.random() * FAKE_CHATTER.length)];
+      }
+
+      diagnostics.rawEventCount += 1;
+      diagnostics.lastReceived = { username: `${user} (test)`, text, ts: Date.now() };
+      broadcastDiagnostics();
+
+      const result = engine.handleGuess(user, user, text);
+      io.emit('chat:message', {
+        username: `${user} (test)`,
+        text,
+        ts: Date.now(),
+        correct: Boolean(result && result.correct),
+        points: result?.points || 0,
+        source: 'test',
+      });
+    }),
+    1800
+  );
+}
+function stopTestMode() {
+  if (testModeTimer) clearInterval(testModeTimer);
+  testModeTimer = null;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Socket.IO wiring - all privileged actions require host auth first
+// ---------------------------------------------------------------------------
+io.on('connection', (socket) => {
+  socket.authed = false;
+
+  // Send current snapshot to the newly connected client.
+  socket.emit('game:state', engine.getPublicState());
+  socket.emit('game:leaderboard', engine.getLeaderboard());
+  socket.emit('diagnostics:update', diagnostics);
+  socket.emit('tiktok:status', { state: diagnostics.connectionState, message: diagnostics.connectionMessage });
+  socket.emit('server:config', {
+    defaultUsername: DEFAULT_TIKTOK_USERNAME,
+    hasEnvSignKey: Boolean(ENV_SIGN_API_KEY),
+  });
+
+  socket.on(
+    'host:auth',
+    safe('socket:host:auth', (password, ack) => {
+      const ok = String(password || '') === HOST_PASSWORD;
+      socket.authed = ok;
+      if (typeof ack === 'function') ack({ ok });
+    })
+  );
+
+  function requireAuth(fn) {
+    return (...args) => {
+      if (!socket.authed) {
+        socket.emit('host:error', 'Host login required for that action.');
+        return;
+      }
+      return fn(...args);
+    };
+  }
+
+  socket.on('host:connectTikTok', safe('socket:connectTikTok', requireAuth(({ username, signApiKey } = {}) => {
+    connectToTikTok(username, signApiKey);
+  })));
+
+  socket.on('host:disconnectTikTok', safe('socket:disconnectTikTok', requireAuth(() => {
+    disconnectFromTikTok();
+  })));
+
+  socket.on('host:startGame', safe('socket:startGame', requireAuth(() => {
+    engine.start();
+  })));
+
+  socket.on('host:stopGame', safe('socket:stopGame', requireAuth(() => {
+    engine.stop();
+  })));
+
+  socket.on('host:skipRound', safe('socket:skipRound', requireAuth(() => {
+    engine.skipRound();
+  })));
+
+  socket.on('host:resetLeaderboard', safe('socket:resetLeaderboard', requireAuth(() => {
+    engine.resetLeaderboard();
+    persistLeaderboard();
+  })));
+
+  socket.on('host:sendMessage', safe('socket:sendMessage', requireAuth(({ name, text } = {}) => {
+    const who = String(name || 'Host').trim() || 'Host';
+    const clean = String(text || '').trim();
+    if (!clean) return;
+
+    diagnostics.rawEventCount += 1;
+    diagnostics.lastReceived = { username: `${who} (host)`, text: clean, ts: Date.now() };
+    broadcastDiagnostics();
+
+    const result = engine.handleGuess(who, who, clean);
+    io.emit('chat:message', {
+      username: `${who} (host)`,
+      text: clean,
+      ts: Date.now(),
+      correct: Boolean(result && result.correct),
+      points: result?.points || 0,
+      source: 'host',
+    });
+  })));
+
+  socket.on('host:addWord', safe('socket:addWord', requireAuth((entry, ack) => {
+    try {
+      const clean = engine.addWord(entry || {});
+      const all = loadJsonSafe(CUSTOM_WORDS_PATH, []);
+      all.push(clean);
+      fs.writeFileSync(CUSTOM_WORDS_PATH, JSON.stringify(all, null, 2));
+      if (typeof ack === 'function') ack({ ok: true });
+    } catch (err) {
+      if (typeof ack === 'function') ack({ ok: false, error: err.message });
+    }
+  })));
+
+  socket.on('host:testMode', safe('socket:testMode', requireAuth((enabled) => {
+    if (enabled) startTestMode();
+    else stopTestMode();
+    io.emit('testMode:status', Boolean(enabled));
+  })));
+
+  socket.on('disconnect', () => {
+    // No per-socket cleanup needed - state lives on the server, not the socket.
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Go!
+// ---------------------------------------------------------------------------
+server.listen(PORT, () => {
+  console.log(`Symble Live server running on port ${PORT}`);
+  if (HOST_PASSWORD === 'changeme123') {
+    console.warn('[SECURITY] You are using the default HOST_PASSWORD. Change it before going live!');
+  }
+});
