@@ -1,22 +1,55 @@
 # Symble Live — TikTok LIVE Word Guessing Game
 
-A fully automated word-guessing game that reads your TikTok LIVE chat in real
-time. Viewers see a genre, a difficulty rating, and a cute animated
-**emoji/symbol clue** (e.g. 🍕🌙 = "PIZZA NIGHT") on Wordle-style letter
-tiles, then race to type the answer in your chat. The fastest correct
-guesser wins points; a Top 10 leaderboard tracks everyone across the whole
-stream.
+A fully automated version of **Symble** that reads your TikTok LIVE chat in
+real time. Viewers work together to crack a secret 5-letter word using a board
+of guesses and a column of mystery symbols. The fastest viewer to type the
+secret word wins the round, and a Top 10 leaderboard tracks everyone across
+the whole stream.
 
-The built-in word bank spans **8 genre packs** — Movies & TV, Animals &
-Nature, Food & Fun, Sayings & Idioms, Games & Pop Culture, Sky & Space,
-Life & Feelings, and Places & Travel — over 70 puzzles in total, and you
-can restrict rounds to just the genres you want from Host Controls.
-
-There is **no host password**. The gear icon opens Host Controls for
-anyone with the page open — see "A note on Host Controls" below.
+There is **no host password**. The gear icon opens Host Controls for anyone
+with the page open — see "A note on Host Controls" below.
 
 This guide assumes **zero coding experience**. Follow it top to bottom in
 order. It should take about 20–30 minutes the first time.
+
+---
+
+## How the game works
+
+**The rules of Symble**
+
+- Every round has a secret 5-letter word and **3 random symbols**. Each symbol
+  secretly means one thing, and nobody is told which:
+  - *right spot* — that letter is in the guess, in the same position
+  - *wrong spot* — that letter is in the guess, but somewhere else
+  - *not in your guess* — that letter isn't in the guess
+- Every guess on the board gets a row of **5 symbols** beside it. The catch:
+  the symbols line up with the letters of the **secret word**, not with the
+  letters of the guess. Symbol 1 is about the secret word's 1st letter,
+  symbol 2 about its 2nd letter, and so on.
+- Repeated letters: if a guess has only one copy of a doubled letter and it's
+  in the wrong spot, the *earliest* matching letter of the secret word gets
+  the "wrong spot" symbol. If it's in the right spot, only that one gets
+  "right spot" and nothing is revealed about the other copy.
+- The colours of the guessed tiles stay hidden until the round ends. Then the
+  tiles flip, the answer appears, and the symbols' meanings are revealed.
+
+The **?** button in the top bar shows this to your viewers, with a worked example.
+
+**How it plays in TikTok chat**
+
+- Any real 5-letter word a viewer types is a **vote for the next row**. Each
+  viewer has one vote per row (typing another word changes their vote).
+- When the row timer runs out (20 seconds by default), the most-voted word
+  is locked into the board and its 5 symbols appear. Everyone who voted for it
+  earns a few points.
+- **Anyone who types the secret word wins the round instantly.** They don't
+  need to win a vote, so once a viewer has worked it out, they should type it!
+- When the board is full (8 rows), there's a short "last chance" window, then
+  the answer is revealed. If nobody solves it, nobody scores and the next
+  round starts a few seconds later.
+- Chat that isn't a single 5-letter word (like "lol" or "omg so hard") is
+  ignored by the game. Viewers can also type `!guess crane` if they prefer.
 
 ---
 
@@ -25,8 +58,9 @@ order. It should take about 20–30 minutes the first time.
 ```
 symble-live-game/
 ├── server.js            <- the "brain": connects to TikTok, runs the game
-├── gameEngine.js         <- scoring, hints, rounds, genre packs (used by server.js)
-├── words.json             <- the built-in bank of 70+ emoji puzzles across 8 genres
+├── gameEngine.js         <- the Symble rules: symbols, votes, rows, scoring
+├── words.json             <- the secret words (880+ everyday 5-letter words)
+├── guesses.json           <- every other word viewers are allowed to guess (6,500+)
 ├── package.json           <- tells the server what software it needs
 ├── .env.example            <- template for your settings
 ├── .gitignore
@@ -126,8 +160,8 @@ You now have a GitHub repository Render can deploy from.
 
 1. On your phone (or computer), open your Render URL.
 2. Tap the **⚙️ gear icon** in the top-right corner. A panel slides up with
-   tabs: **Connect / Game / Word Packs / Message / Add Word / Status**.
-   There's nothing to unlock — it opens straight away.
+   tabs: **Connect / Game / Message / Add Word / Status**. There's nothing to
+   unlock — it opens straight away.
 
 > **A note on Host Controls:** anyone who opens your game's URL can tap the
 > gear icon and use these controls (start/stop the game, connect to a
@@ -142,14 +176,16 @@ You now have a GitHub repository Render can deploy from.
 You don't need to be live on TikTok to try this out:
 
 1. Open the **Status** tab and flip the "Simulate fake TikTok chat" switch
-   **on**. Fake viewer messages will start appearing in the chat feed every
-   couple of seconds, and every so often one will "guess" the correct answer.
+   **on**. Fake viewers will start voting for words in the chat feed every
+   second or so, and every so often one of them will "solve" the puzzle.
 2. Open the **Game** tab and tap **▶ Start Game**.
-3. Watch the board: the emoji clue pops in, letter tiles start revealing
-   over time, and the timer bar counts down. When Test Mode gets the right
-   answer (or you type it yourself in the **Message** tab), you'll see the
-   confetti reveal banner and the leaderboard update.
-4. The **Status** tab also shows live diagnostics — a counter of every
+3. Watch the board: the crowd's top-voted words appear under the timer, each
+   row locks in with its 5 symbols when the timer runs out, and when a round
+   ends the tiles flip to their colours and the answer and symbol meanings
+   are revealed.
+4. You can also type guesses yourself in the **Message** tab. A valid 5-letter
+   word is a vote, and the secret word wins the round.
+5. The **Status** tab also shows live diagnostics — a counter of every
    message received and the last one — so you always know things are
    working even without checking server logs.
 
@@ -170,32 +206,31 @@ When you're happy, turn Test Mode back **off**.
    into the game — no further setup needed.
 6. Share your screen (or point your camera at your phone) so your viewers
    can see the board while they type answers in your normal TikTok chat.
+   A good pinned comment: *"Type a 5-letter word to vote. Type the secret
+   word to win!"*
 
 ---
 
 ## Customizing the game
 
-- **Pick which genres are in rotation**: Host Controls → **Word Packs**.
-  Toggle "All packs" off, then tap individual genre chips (Movies & TV,
-  Animals & Nature, Food & Fun, Sayings & Idioms, Games & Pop Culture,
-  Sky & Space, Life & Feelings, Places & Travel) to build a custom mix —
-  great for themed streams or ramping up the challenge. This takes effect
-  immediately for the next round.
-- **Add new puzzles**: Host Controls → **Add Word**. Type the answer, paste
-  emoji(s), pick a category label, a genre pack, and a difficulty, then tap
-  **Add to Word Bank**. These are saved permanently on the server (in
-  `words-custom.json`) and will keep showing up in future rounds, even
-  after a restart.
-- **Change the built-in puzzles**: open `words.json` on GitHub, click the
-  pencil (✏️) icon to edit, adjust the list following the existing format
-  (each entry needs `answer`, `emojis`, `category`, `pack`, and
-  `difficulty`), and commit. Render will need to be redeployed to pick up
-  file edits made outside the Add Word form (Render → Manual Deploy →
-  Deploy latest commit).
-- **Scoring/difficulty logic**: harder words (difficulty 3, shown as 🔥🔥🔥)
-  are worth more points and run on a longer timer; points shrink the
-  longer a round runs and each time a letter hint is auto-revealed. This
-  is all handled automatically — no need to touch anything.
+- **Pacing**: Host Controls → **Game → Pacing**.
+  - *Seconds per row* — how long the crowd has to vote for each row (default 20).
+  - *Last-chance seconds* — how long viewers can still solve it after the last
+    row (default 20).
+  - *Rows on the board* — 5 to 10 (default 8, like the original Symble). This
+    applies from the next round; the timers apply straight away.
+  - *Max round seconds* — a hard cap for a whole round (default 300).
+- **Add secret words**: Host Controls → **Add Word**. Type any 5-letter word and
+  tap **Add to Word Bank**. It can come up as a secret word from then on.
+  Render's free tier wipes files whenever it redeploys, so to keep a word
+  forever, add it to `words.json` on GitHub as well (see next point).
+- **Change the built-in words**: open `words.json` on GitHub, click the pencil
+  (✏️) icon to edit, and add or remove words. Each one is 5 capital letters in
+  quotes, followed by a comma (except the last one). Commit, then redeploy in
+  Render (Manual Deploy → Deploy latest commit). `guesses.json` works the same
+  way; it's the list of extra words viewers may vote for. Anything in
+  `words.json` is also accepted as a guess automatically.
+- **Scoring**: see below.
 
 ---
 
@@ -210,6 +245,13 @@ handle exactly, (c) the status dot is green/"Connected."
 Usually means either the username is wrong, you're not currently live, or
 the Euler Stream key is missing/invalid. Re-check Step 7 and try again —
 the game always retries automatically before giving up.
+
+**A viewer's guess did nothing.**
+The chat shows a small tag next to each guess. "vote" means it counted;
+"not a word" means it's not in the word list; "already played" means that
+word is already on the board; "board full" means you're in the last-chance
+window (only the secret word counts now). Guesses must be a single 5-letter
+word with no other text.
 
 **The page looks fine but nothing updates.**
 Refresh the page once. The browser reconnects to the server automatically,
@@ -232,16 +274,14 @@ couple of minutes on first deploy.
 
 ## How the scoring works (for the curious)
 
-- Every puzzle has a difficulty from 1 (easy) to 3 (hard), set per word.
-- Round length: 55–85 seconds depending on difficulty.
-- Starting value: `60 + (difficulty × 40)` points.
-- Every full second that passes, the value drops by 2 points.
-- Every time a letter is auto-revealed as a hint, the value drops by 15
-  points (never below a 10-point floor).
-- The first person to type a correct answer (small typos are forgiven on
-  longer answers) wins that round's current point value and the round ends
-  immediately.
-- If nobody guesses in time, the answer is revealed, nobody scores, and the
-  next round starts a few seconds later.
+- **Solving the round** (typing the secret word): `100` points, plus `20` for
+  every row still empty on the board, plus up to `60` more for time left on
+  the round clock. Solving it with an empty board is worth about 320; solving
+  it after the board is full is worth about 160. The board shows the current value.
+- **Voting**: everyone who voted for the word that got locked into a row
+  earns `5` points.
+- Only the first person to type the secret word scores the round; the round
+  ends immediately.
+- If nobody solves it, nobody scores for the solve and the answer is revealed.
 
 Enjoy the stream! 🎉

@@ -1,139 +1,214 @@
 import { EventEmitter } from 'events';
 
+// ===========================================================================
+// SYMBLE - the rules, in one place
+// ---------------------------------------------------------------------------
+// * A secret 5-letter word is chosen.
+// * Every round, 3 symbols are drawn at random and each is secretly assigned
+//   one meaning:  "correct spot", "wrong spot", or "not in the guess".
+//   Nobody is told which symbol means what - players have to work it out.
+// * When a word is guessed, the board shows 5 symbols next to it. Symbol #1
+//   describes the SECRET word's 1st letter, symbol #2 its 2nd letter, and so on
+//   (NOT the letters of the guess!):
+//       correct   -> the guess has that same letter in that same position
+//       misplaced -> the guess contains that letter, but somewhere else
+//       absent    -> the guess doesn't contain that letter (or has no spare copy)
+// * Duplicate letters: a misplaced letter is marked on the EARLIEST matching
+//   letter of the secret word that isn't already "correct".
+// * The colours of the guessed tiles stay hidden until the round is over.
+//
+// HOW IT PLAYS ON TIKTOK LIVE
+// * Every valid 5-letter word typed in chat is a VOTE for the next row.
+//   When the turn timer runs out, the most-voted word is locked in as a row.
+// * Anyone who types the SECRET word wins the round instantly (no vote needed).
+// * When the board is full there's a short "final chance" window, then the
+//   answer is revealed and the tiles flip to their colours.
+// ===========================================================================
+
+export const WORD_LENGTH = 5;
+export const CONCEPTS = ['correct', 'misplaced', 'absent'];
+// Ids must match the SVG symbols drawn in public/index.html
+export const SYMBOL_POOL = ['heart', 'drop', 'sun', 'infinity', 'star', 'diamond', 'moon', 'bolt', 'plus', 'triangle'];
+
+export const DEFAULT_SETTINGS = {
+  maxRows: 8,        // rows on the board (the original Symble has 8)
+  turnSeconds: 20,   // how long the crowd has to vote for each row
+  finalSeconds: 20,  // "last chance" window after the last row is locked
+  roundSeconds: 300, // hard cap on a whole round
+};
+
+// Points - tweak to taste.
+const SCORING = {
+  base: 100,         // for solving the round
+  perUnusedRow: 20,  // + this for every row still empty (fewer clues used = more points)
+  timeBonusMax: 60,  // + up to this, shrinking as the round clock runs down
+  votePoints: 5,     // for everyone who voted for the word that got locked in
+};
+
+const STATUS = { IDLE: 'idle', ACTIVE: 'active', REVEAL: 'reveal' };
+const ROUND_GAP_MS = 6500; // pause between rounds so the reveal is readable
+const TICK_MS = 250;
+const TALLY_BROADCAST_MS = 400;
+
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
 
-/** Lowercase, strip punctuation, collapse whitespace - for forgiving guesses. */
-function normalize(text) {
+/** Lowercase, strip accents and punctuation - used for user keys. */
+export function normalize(text) {
   return String(text || '')
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '') // strip accents
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/** Classic edit-distance, used to forgive small typos on longer answers. */
-function levenshtein(a, b) {
-  const m = a.length;
-  const n = b.length;
-  if (m === 0) return n;
-  if (n === 0) return m;
-  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
-    }
+/**
+ * Turn a chat comment into a guess, or null if it isn't one.
+ * Accepts "crane", "Crane!", "!guess crane", "!g crane". Anything with other
+ * words in it is normal chatter and is ignored.
+ */
+export function parseGuess(text) {
+  const tokens = String(text || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length && /^[!/](g|guess)$/i.test(tokens[0])) tokens.shift();
+  if (tokens.length !== 1) return null;
+  const word = tokens[0].replace(/^[!/]/, '').replace(/[!?.,:;'"]+$/, '');
+  return /^[A-Za-z]{5}$/.test(word) ? word.toUpperCase() : null;
+}
+
+function shuffle(list) {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return dp[m][n];
+  return a;
 }
 
-/** Is `guess` close enough to `answer` to count as correct? */
-function isCorrectGuess(guess, answer) {
-  const g = normalize(guess);
-  const a = normalize(answer);
-  if (!g) return false;
-  if (g === a) return true;
-  // Allow a 1-character typo on answers of reasonable length only,
-  // so short answers still require an exact match.
-  if (a.length >= 6) {
-    return levenshtein(g, a) <= 1;
-  }
-  return false;
-}
-
-/** Build the "_ _ _ ' _ _" style blank pattern for the board (legacy plain-text form). */
-function buildBlanks(answer, revealedIndices) {
-  return answer
-    .split('')
-    .map((ch, i) => {
-      if (ch === ' ') return ' ';
-      if (!/[a-zA-Z0-9]/.test(ch)) return ch; // show punctuation as-is
-      return revealedIndices.has(i) ? answer[i] : '_';
-    })
-    .join(' ');
-}
-
-/** Structured per-character tiles for a letter-tile UI: [{ch, revealed, isSpace, isPunct}]. */
-function buildTiles(answer, revealedIndices) {
-  return answer.split('').map((ch, i) => {
-    if (ch === ' ') return { ch: ' ', revealed: true, isSpace: true, isPunct: false };
-    if (!/[a-zA-Z0-9]/.test(ch)) return { ch, revealed: true, isSpace: false, isPunct: true };
-    return { ch, revealed: revealedIndices.has(i), isSpace: false, isPunct: false };
-  });
-}
-
-const STATUS = {
-  IDLE: 'idle',
-  COUNTDOWN: 'countdown',
-  ACTIVE: 'active',
-  REVEAL: 'reveal',
+const clamp = (n, lo, hi, fallback) => {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v)) return fallback;
+  return Math.min(hi, Math.max(lo, v));
 };
 
-const ROUND_GAP_MS = 4500; // pause between rounds so the reveal is readable
-const TICK_MS = 250;
+/**
+ * Score one guess against the answer.
+ *   states[i]  - status of the i-th GUESSED letter (Wordle style; hidden until the end)
+ *   symbols[i] - status of the i-th letter of the ANSWER (what the symbol column shows)
+ * Each is 'correct' | 'misplaced' | 'absent'.
+ */
+export function evaluateGuess(answer, guess) {
+  const n = answer.length;
+  const states = new Array(n).fill('absent');
+  const symbols = new Array(n).fill('absent');
+  const unmatched = {}; // letter -> how many copies in the answer aren't "correct" yet
+
+  for (let i = 0; i < n; i++) {
+    if (guess[i] === answer[i]) {
+      states[i] = 'correct';
+      symbols[i] = 'correct';
+    } else {
+      unmatched[answer[i]] = (unmatched[answer[i]] || 0) + 1;
+    }
+  }
+
+  // Guess side: hand out "misplaced" left to right while spare copies remain.
+  const spare = { ...unmatched };
+  for (let i = 0; i < n; i++) {
+    if (states[i] === 'correct') continue;
+    if (spare[guess[i]] > 0) {
+      states[i] = 'misplaced';
+      spare[guess[i]] -= 1;
+    }
+  }
+
+  // Answer side: each misplaced guess letter marks the EARLIEST unmatched copy in the answer.
+  const toMark = {};
+  for (const letter of Object.keys(unmatched)) toMark[letter] = unmatched[letter] - spare[letter];
+  for (let i = 0; i < n; i++) {
+    if (symbols[i] === 'correct') continue;
+    if (toMark[answer[i]] > 0) {
+      symbols[i] = 'misplaced';
+      toMark[answer[i]] -= 1;
+    }
+  }
+  return { states, symbols };
+}
+
+// ---------------------------------------------------------------------------
+// The engine
+// ---------------------------------------------------------------------------
 
 export class GameEngine extends EventEmitter {
-  constructor(wordBank) {
+  /**
+   * @param {string[]} answers     words that can be the secret word
+   * @param {string[]} validWords  extra words that are accepted as guesses
+   */
+  constructor(answers = [], validWords = [], settings = {}) {
     super();
-    this.wordBank = Array.isArray(wordBank) && wordBank.length ? wordBank : [
-      { answer: 'HELLO WORLD', emojis: ['👋', '🌍'], category: 'Default', difficulty: 1 },
-    ];
+    const clean = (list) => [...new Set(
+      (Array.isArray(list) ? list : [])
+        .map((w) => String(w?.answer ?? w ?? '').toUpperCase().trim())
+        .filter((w) => /^[A-Z]{5}$/.test(w))
+    )];
+    this.answers = clean(answers);
+    if (!this.answers.length) this.answers = ['SHAKE', 'THICK', 'SHOOK', 'STARE', 'SOLID'];
+    this.valid = new Set([...this.answers, ...clean(validWords)]);
+
+    this.settings = { ...DEFAULT_SETTINGS };
+    this.updateSettings(settings, { silent: true });
+
     this.usedRecently = [];
-    this.leaderboard = new Map(); // key: lowercased username -> {name, score, correct}
+    this.leaderboard = new Map(); // key -> { name, score, correct }
     this.roundNumber = 0;
-    this.activePackIds = null; // null/empty = every pack is in rotation
+    this.voteSeq = 0;
 
     this.status = STATUS.IDLE;
-    this.current = null; // { answer, emojis, category, difficulty, revealedIndices, ... }
+    this.current = null;
     this.timer = null;
+    this.nextRoundTimeout = null;
+    this.broadcastTimeout = null;
 
     this._tick = this._tick.bind(this);
   }
 
   // -------------------------------------------------------------------
-  // Word bank management
+  // Word bank + settings
   // -------------------------------------------------------------------
 
+  get wordBankSize() { return this.answers.length; }
+
   addWord(entry) {
-    const clean = {
-      answer: String(entry.answer || '').toUpperCase().trim(),
-      emojis: Array.isArray(entry.emojis) ? entry.emojis.filter(Boolean) : String(entry.emojis || '').split(/\s+/).filter(Boolean),
-      category: String(entry.category || 'Custom').trim() || 'Custom',
-      pack: String(entry.pack || 'custom').trim() || 'custom',
-      difficulty: Math.min(3, Math.max(1, parseInt(entry.difficulty, 10) || 1)),
-    };
-    if (!clean.answer || clean.emojis.length === 0) {
-      throw new Error('A word needs both an answer and at least one emoji/symbol.');
+    const answer = String(entry?.answer ?? entry ?? '').toUpperCase().trim();
+    if (!/^[A-Z]{5}$/.test(answer)) {
+      throw new Error('A Symble word must be exactly 5 letters (A-Z, no spaces).');
     }
-    this.wordBank.push(clean);
-    this.emit('wordBankUpdated', this.wordBank.length);
-    this.emit('packsUpdated', this.getPacksSummary());
-    return clean;
+    if (!this.answers.includes(answer)) this.answers.push(answer);
+    this.valid.add(answer);
+    this.emit('wordBankUpdated', this.answers.length);
+    return { answer };
   }
 
-  /** Restrict future rounds to the given pack ids. Pass null/empty for "all packs". */
-  setActivePacks(packIds) {
-    this.activePackIds = Array.isArray(packIds) && packIds.length ? new Set(packIds) : null;
-    this.emit('packsUpdated', this.getPacksSummary());
+  /** A familiar word, used by Test Mode for fake votes. */
+  randomValidWord() {
+    return this.answers[Math.floor(Math.random() * this.answers.length)];
   }
 
-  /** Distinct packs currently in the word bank, with word counts, for the host UI. */
-  getPacksSummary() {
-    const counts = new Map();
-    for (const w of this.wordBank) {
-      const id = w.pack || 'custom';
-      counts.set(id, (counts.get(id) || 0) + 1);
-    }
-    return {
-      packs: [...counts.entries()].map(([id, count]) => ({ id, count })),
-      active: this.activePackIds ? [...this.activePackIds] : null,
-    };
+  updateSettings(patch = {}, { silent = false } = {}) {
+    const s = this.settings;
+    s.maxRows = clamp(patch.maxRows ?? s.maxRows, 5, 10, DEFAULT_SETTINGS.maxRows);
+    s.turnSeconds = clamp(patch.turnSeconds ?? s.turnSeconds, 8, 90, DEFAULT_SETTINGS.turnSeconds);
+    s.finalSeconds = clamp(patch.finalSeconds ?? s.finalSeconds, 5, 60, DEFAULT_SETTINGS.finalSeconds);
+    s.roundSeconds = clamp(patch.roundSeconds ?? s.roundSeconds, 60, 900, DEFAULT_SETTINGS.roundSeconds);
+    if (!silent) this.emit('settingsUpdated', { ...s });
+    return { ...s };
   }
 
   // -------------------------------------------------------------------
@@ -141,28 +216,20 @@ export class GameEngine extends EventEmitter {
   // -------------------------------------------------------------------
 
   start() {
-    if (this.timer) clearInterval(this.timer);
+    this._clearTimers();
     this.timer = setInterval(this._tick, TICK_MS);
     this._startRound();
   }
 
   stop() {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    this._clearTimers();
     this.status = STATUS.IDLE;
     this.current = null;
     this.emit('stateChanged', this.getPublicState());
   }
 
   skipRound() {
-    if (this.status === STATUS.ACTIVE && this.current) {
-      this.current.revealedAnswer = true;
-      this.status = STATUS.REVEAL;
-      this.current.revealAt = Date.now();
-      this.emit('roundEnded', { reason: 'skipped', answer: this.current.answer, winner: null });
-      this.emit('stateChanged', this.getPublicState());
-      this._scheduleNextRound();
-    }
+    if (this.status === STATUS.ACTIVE && this.current) this._endRound('skipped', null);
   }
 
   resetLeaderboard() {
@@ -170,46 +237,56 @@ export class GameEngine extends EventEmitter {
     this.emit('leaderboardUpdated', this.getLeaderboard());
   }
 
+  _clearTimers() {
+    if (this.timer) clearInterval(this.timer);
+    if (this.nextRoundTimeout) clearTimeout(this.nextRoundTimeout);
+    if (this.broadcastTimeout) clearTimeout(this.broadcastTimeout);
+    this.timer = null;
+    this.nextRoundTimeout = null;
+    this.broadcastTimeout = null;
+  }
+
   // -------------------------------------------------------------------
   // Round setup
   // -------------------------------------------------------------------
 
   _pickWord() {
-    const inActivePacks = this.activePackIds
-      ? this.wordBank.filter((w) => this.activePackIds.has(w.pack))
-      : this.wordBank;
-    const base = inActivePacks.length ? inActivePacks : this.wordBank; // never fully empty
-    const pool = base.filter((w) => !this.usedRecently.includes(w.answer));
-    const source = pool.length ? pool : base;
+    const pool = this.answers.filter((w) => !this.usedRecently.includes(w));
+    const source = pool.length ? pool : this.answers;
     const word = source[Math.floor(Math.random() * source.length)];
-    this.usedRecently.push(word.answer);
-    if (this.usedRecently.length > Math.max(5, Math.floor(base.length / 2))) {
-      this.usedRecently.shift();
-    }
+    this.usedRecently.push(word);
+    if (this.usedRecently.length > Math.min(150, Math.floor(this.answers.length / 2))) this.usedRecently.shift();
     return word;
   }
 
   _startRound() {
-    const word = this._pickWord();
+    const answer = this._pickWord();
     this.roundNumber += 1;
 
-    const timeLimitMs = Math.min(90000, 40000 + word.difficulty * 15000);
-    const now = Date.now();
+    // 3 random symbols, each given one secret meaning for this round only.
+    const symbols = shuffle(SYMBOL_POOL).slice(0, 3);
+    const concepts = shuffle(CONCEPTS);
+    const symbolMap = {};
+    concepts.forEach((concept, i) => { symbolMap[concept] = symbols[i]; });
 
+    const s = this.settings;
+    const now = Date.now();
     this.current = {
-      answer: word.answer,
-      emojis: word.emojis,
-      category: word.category,
-      pack: word.pack || 'custom',
-      difficulty: word.difficulty,
-      revealedIndices: new Set(),
-      hintsGiven: 0,
+      answer,
+      symbolMap,                  // { correct: 'sun', misplaced: 'drop', absent: 'heart' } - secret until the reveal
+      rows: [],                   // locked-in guesses
+      votes: new Map(),           // userKey -> { word, name, at }
+      maxRows: s.maxRows,
+      phase: 'voting',            // 'voting' | 'final'
       startedAt: now,
-      endsAt: now + timeLimitMs,
-      timeLimitMs,
+      endsAt: now + s.roundSeconds * 1000,
+      timeLimitMs: s.roundSeconds * 1000,
+      turnMs: s.turnSeconds * 1000,
+      turnEndsAt: now + s.turnSeconds * 1000,
+      finalEndsAt: null,
       winner: null,
-      revealedAnswer: false,
-      hintTimes: [now + timeLimitMs * 0.4, now + timeLimitMs * 0.7],
+      reason: null,
+      over: false,
     };
     this.status = STATUS.ACTIVE;
     this.emit('roundStarted', this.getPublicState());
@@ -217,85 +294,148 @@ export class GameEngine extends EventEmitter {
   }
 
   _scheduleNextRound() {
-    setTimeout(() => {
-      if (this.timer) this._startRound(); // only continue if game hasn't been stopped
+    if (this.nextRoundTimeout) clearTimeout(this.nextRoundTimeout);
+    this.nextRoundTimeout = setTimeout(() => {
+      this.nextRoundTimeout = null;
+      if (this.timer) this._startRound(); // only continue if the game hasn't been stopped
     }, ROUND_GAP_MS);
   }
 
-  _tick() {
-    if (this.status !== STATUS.ACTIVE || !this.current) return;
-    const now = Date.now();
+  _endRound(reason, winner) {
     const c = this.current;
-
-    // Reveal a random letter at scheduled hint checkpoints
-    while (c.hintTimes.length && now >= c.hintTimes[0]) {
-      c.hintTimes.shift();
-      this._revealRandomLetter();
-    }
-
-    if (now >= c.endsAt) {
-      c.revealedAnswer = true;
-      this.status = STATUS.REVEAL;
-      c.revealAt = now;
-      this.emit('roundEnded', { reason: 'timeout', answer: c.answer, winner: null });
-      this.emit('stateChanged', this.getPublicState());
-      this._scheduleNextRound();
-      return;
-    }
-
-    this.emit('tick', this.getPublicState());
-  }
-
-  _revealRandomLetter() {
-    const c = this.current;
-    const candidates = [];
-    for (let i = 0; i < c.answer.length; i++) {
-      if (/[a-zA-Z0-9]/.test(c.answer[i]) && !c.revealedIndices.has(i)) candidates.push(i);
-    }
-    if (!candidates.length) return;
-    const idx = candidates[Math.floor(Math.random() * candidates.length)];
-    c.revealedIndices.add(idx);
-    c.hintsGiven += 1;
-    this.emit('hintRevealed', this.getPublicState());
+    if (!c || c.over) return;
+    c.over = true;
+    c.reason = reason;
+    c.winner = winner;
+    c.votes.clear();
+    this.status = STATUS.REVEAL;
+    c.revealAt = Date.now();
+    this.emit('roundEnded', { reason, answer: c.answer, winner });
     this.emit('stateChanged', this.getPublicState());
+    this._scheduleNextRound();
   }
 
   // -------------------------------------------------------------------
-  // Guess handling (fed by TikTok chat OR the host's manual input box)
+  // Clock: locks in rows and ends rounds
+  // -------------------------------------------------------------------
+
+  _tick() {
+    if (this.status !== STATUS.ACTIVE || !this.current) return;
+    const c = this.current;
+    const now = Date.now();
+
+    if (now >= c.endsAt) return this._endRound('timeout', null);
+    if (c.phase === 'final') {
+      if (now >= c.finalEndsAt) this._endRound('out-of-rows', null);
+      return;
+    }
+    if (now >= c.turnEndsAt) this._lockTurn(now);
+  }
+
+  _tally() {
+    const c = this.current;
+    const byWord = new Map();
+    for (const [key, v] of c.votes) {
+      const e = byWord.get(v.word) || { word: v.word, count: 0, first: v.at, voters: [] };
+      e.count += 1;
+      e.first = Math.min(e.first, v.at);
+      e.voters.push({ key, name: v.name });
+      byWord.set(v.word, e);
+    }
+    return [...byWord.values()].sort((a, b) => b.count - a.count || a.first - b.first);
+  }
+
+  _lockTurn(now) {
+    const c = this.current;
+    const tally = this._tally();
+
+    if (!tally.length) {
+      // Nobody voted - give the crowd another full turn instead of wasting a row.
+      c.turnEndsAt = now + c.turnMs;
+      this.emit('stateChanged', this.getPublicState());
+      return;
+    }
+
+    const top = tally[0];
+    const { states, symbols } = evaluateGuess(c.answer, top.word);
+    c.rows.push({
+      word: top.word,
+      votes: top.count,
+      states,
+      symbols: symbols.map((concept) => c.symbolMap[concept]),
+    });
+
+    for (const voter of top.voters) this._addPoints(voter.key, voter.name, SCORING.votePoints, false);
+    c.votes.clear();
+
+    if (c.rows.length >= c.maxRows) {
+      c.phase = 'final';
+      c.finalEndsAt = Math.min(c.endsAt, now + this.settings.finalSeconds * 1000);
+    } else {
+      c.turnEndsAt = now + c.turnMs;
+    }
+
+    this.emit('rowLocked', { word: top.word, votes: top.count });
+    this.emit('leaderboardUpdated', this.getLeaderboard());
+    this.emit('stateChanged', this.getPublicState());
+  }
+
+  _queueBroadcast() {
+    if (this.broadcastTimeout) return;
+    this.broadcastTimeout = setTimeout(() => {
+      this.broadcastTimeout = null;
+      if (this.status === STATUS.ACTIVE) this.emit('stateChanged', this.getPublicState());
+    }, TALLY_BROADCAST_MS);
+  }
+
+  _points(c, now) {
+    const rowsLeft = Math.max(0, c.maxRows - c.rows.length);
+    const timeLeft = Math.max(0, Math.min(1, (c.endsAt - now) / c.timeLimitMs));
+    return Math.round(SCORING.base + rowsLeft * SCORING.perUnusedRow + SCORING.timeBonusMax * timeLeft);
+  }
+
+  _addPoints(key, name, points, isWin) {
+    const entry = this.leaderboard.get(key) || { name, score: 0, correct: 0 };
+    entry.name = name || entry.name;
+    entry.score += points;
+    if (isWin) entry.correct += 1;
+    this.leaderboard.set(key, entry);
+    return entry;
+  }
+
+  // -------------------------------------------------------------------
+  // Chat input (TikTok comments, test mode, or the host's message box)
+  //   returns null            -> not a guess at all (normal chatter / no round)
+  //           { rejected }    -> looked like a guess but was refused
+  //           { vote, word }  -> counted as a vote for the next row
+  //           { correct ... } -> solved it!
   // -------------------------------------------------------------------
 
   handleGuess(username, displayName, text) {
     if (this.status !== STATUS.ACTIVE || !this.current) return null;
-    if (!text) return null;
-
     const c = this.current;
-    if (!isCorrectGuess(text, c.answer)) return null;
-
-    // Correct! Score it, lock the round, schedule the next one.
-    const elapsedMs = Date.now() - c.startedAt;
-    const basePoints = 60 + c.difficulty * 40;
-    const timeDecay = Math.floor(elapsedMs / 1000) * 2;
-    const hintPenalty = c.hintsGiven * 15;
-    const points = Math.max(10, Math.round(basePoints - timeDecay - hintPenalty));
+    const word = parseGuess(text);
+    if (!word) return null;
 
     const key = normalize(username) || normalize(displayName) || 'anonymous';
-    const entry = this.leaderboard.get(key) || { name: displayName || username, score: 0, correct: 0 };
-    entry.name = displayName || username || entry.name;
-    entry.score += points;
-    entry.correct += 1;
-    this.leaderboard.set(key, entry);
+    const name = displayName || username || 'viewer';
 
-    c.winner = { name: entry.name, points };
-    c.revealedAnswer = true;
-    this.status = STATUS.REVEAL;
-    c.revealAt = Date.now();
+    // The secret word always wins, whether or not the board is still taking votes.
+    if (word === c.answer) {
+      const points = this._points(c, Date.now());
+      const entry = this._addPoints(key, name, points, true);
+      this._endRound('guessed', { name: entry.name, points });
+      this.emit('leaderboardUpdated', this.getLeaderboard());
+      return { correct: true, points, name: entry.name };
+    }
 
-    this.emit('roundEnded', { reason: 'guessed', answer: c.answer, winner: c.winner });
-    this.emit('leaderboardUpdated', this.getLeaderboard());
-    this.emit('stateChanged', this.getPublicState());
-    this._scheduleNextRound();
+    if (!this.valid.has(word)) return { rejected: 'not-a-word', word };
+    if (c.rows.some((r) => r.word === word)) return { rejected: 'already-played', word };
+    if (c.phase === 'final') return { rejected: 'board-full', word };
 
-    return { correct: true, points, name: entry.name };
+    c.votes.set(key, { word, name, at: ++this.voteSeq }); // seq (not clock) so ties are always broken by who got there first
+    this._queueBroadcast();
+    return { vote: true, word };
   }
 
   // -------------------------------------------------------------------
@@ -303,45 +443,65 @@ export class GameEngine extends EventEmitter {
   // -------------------------------------------------------------------
 
   getLeaderboard() {
-    return [...this.leaderboard.values()]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 10);
+    return [...this.leaderboard.values()].sort((a, b) => b.score - a.score).slice(0, 10);
   }
 
+  getSettings() { return { ...this.settings }; }
+
   getPublicState() {
-    if (!this.current) {
-      return {
-        status: this.status,
-        roundNumber: this.roundNumber,
-        wordBankSize: this.wordBank.length,
-      };
-    }
-    const c = this.current;
-    const now = Date.now();
-    const currentPoints = Math.max(
-      10,
-      Math.round(60 + c.difficulty * 40 - Math.floor((now - c.startedAt) / 1000) * 2 - c.hintsGiven * 15)
-    );
-    return {
+    const base = {
       status: this.status,
       roundNumber: this.roundNumber,
-      wordBankSize: this.wordBank.length,
-      category: c.category,
-      pack: c.pack,
-      difficulty: c.difficulty,
-      emojis: c.emojis,
-      blanks: buildBlanks(c.answer, c.revealedIndices),
-      tiles: buildTiles(c.answer, c.revealedIndices),
-      answer: c.revealedAnswer ? c.answer : null,
-      winner: c.winner,
-      hintsGiven: c.hintsGiven,
+      wordBankSize: this.answers.length,
+      wordLength: WORD_LENGTH,
+      serverNow: Date.now(),
+    };
+    if (!this.current) return { ...base, maxRows: this.settings.maxRows, rows: [] };
+
+    const c = this.current;
+    const now = Date.now();
+    const revealed = this.status === STATUS.REVEAL;
+
+    // Tile colours (states) stay secret until the round is over.
+    let rows = c.rows.map((r) => ({
+      word: r.word,
+      votes: r.votes,
+      symbols: r.symbols,
+      ...(revealed ? { states: r.states } : {}),
+    }));
+    if (revealed && c.winner && rows.length < c.maxRows) {
+      rows.push({
+        word: c.answer,
+        votes: 0,
+        solved: true,
+        symbols: new Array(WORD_LENGTH).fill(c.symbolMap.correct),
+        states: new Array(WORD_LENGTH).fill('correct'),
+      });
+    }
+
+    const tally = revealed ? [] : this._tally();
+    return {
+      ...base,
+      maxRows: c.maxRows,
+      rows,
+      phase: c.phase,
       startedAt: c.startedAt,
       endsAt: c.endsAt,
       timeLimitMs: c.timeLimitMs,
       msRemaining: Math.max(0, c.endsAt - now),
-      currentPoints,
+      turnMs: c.turnMs,
+      turnEndsAt: c.turnEndsAt,
+      finalEndsAt: c.finalEndsAt,
+      finalMs: this.settings.finalSeconds * 1000,
+      tally: tally.slice(0, 5).map((t) => ({ word: t.word, count: t.count })),
+      voters: c.votes.size,
+      currentPoints: revealed ? 0 : this._points(c, now),
+      scoring: { ...SCORING }, // lets the screen count the points down between updates
+      // Only revealed at the end of the round:
+      answer: revealed ? c.answer : null,
+      winner: revealed ? c.winner : null,
+      reason: revealed ? c.reason : null,
+      legend: revealed ? { ...c.symbolMap } : null,
     };
   }
 }
-
-export { normalize, isCorrectGuess };

@@ -50,9 +50,13 @@ const server = http.createServer(app);
 const io = new SocketIOServer(server, { cors: { origin: '*' } });
 
 // ---------------------------------------------------------------------------
-// 2. Word bank (built-in + any host-added custom words), loaded from disk
+// 2. Word lists, loaded from disk
+//    words.json         - the secret words (answers)
+//    guesses.json       - every other word viewers are allowed to guess
+//    words-custom.json  - secret words the host adds from the "Add Word" tab
 // ---------------------------------------------------------------------------
 const WORDS_PATH = path.join(__dirname, 'words.json');
+const GUESSES_PATH = path.join(__dirname, 'guesses.json');
 const CUSTOM_WORDS_PATH = path.join(__dirname, 'words-custom.json');
 const LEADERBOARD_PATH = path.join(__dirname, 'leaderboard.json');
 
@@ -68,8 +72,9 @@ function loadJsonSafe(filePath, fallback) {
 }
 
 const builtInWords = loadJsonSafe(WORDS_PATH, []);
+const validGuesses = loadJsonSafe(GUESSES_PATH, []);
 const customWords = loadJsonSafe(CUSTOM_WORDS_PATH, []);
-const engine = new GameEngine([...builtInWords, ...customWords]);
+const engine = new GameEngine([...builtInWords, ...customWords], validGuesses);
 
 // Restore leaderboard across restarts, if present.
 const savedLeaderboard = loadJsonSafe(LEADERBOARD_PATH, null);
@@ -130,6 +135,20 @@ function extractChatFields(data) {
   return { text: String(text || ''), username: String(username || 'unknown_user'), displayName: String(displayName || username) };
 }
 
+/** Send one chat line to every screen, tagged with what the game did with it. */
+function emitChat(name, text, result, source) {
+  io.emit('chat:message', {
+    username: name,
+    text,
+    ts: Date.now(),
+    correct: Boolean(result && result.correct),
+    points: result?.points || 0,
+    vote: result?.vote ? result.word : null,
+    rejected: result?.rejected || null,
+    source,
+  });
+}
+
 function wireConnectionEvents(connection) {
   connection.on(
     ControlEvent.CONNECTED,
@@ -178,15 +197,7 @@ function wireConnectionEvents(connection) {
       diagnostics.lastReceived = { username: displayName, text, ts: Date.now() };
       broadcastDiagnostics();
 
-      const result = engine.handleGuess(username, displayName, text);
-      io.emit('chat:message', {
-        username: displayName,
-        text,
-        ts: Date.now(),
-        correct: Boolean(result && result.correct),
-        points: result?.points || 0,
-        source: 'tiktok',
-      });
+      emitChat(displayName, text, engine.handleGuess(username, displayName, text), 'tiktok');
     })
   );
 }
@@ -275,13 +286,13 @@ engine.on('stateChanged', safe('emit:stateChanged', (state) => io.emit('game:sta
 engine.on('leaderboardUpdated', safe('emit:leaderboard', (lb) => io.emit('game:leaderboard', lb)));
 engine.on('roundEnded', safe('emit:roundEnded', (payload) => io.emit('game:roundEnded', payload)));
 engine.on('wordBankUpdated', safe('emit:wordBank', (count) => io.emit('game:wordBankSize', count)));
-engine.on('packsUpdated', safe('emit:packsUpdated', (summary) => io.emit('game:packs', summary)));
+engine.on('settingsUpdated', safe('emit:settings', (settings) => io.emit('game:settings', settings)));
 
 // ---------------------------------------------------------------------------
 // 6. Test mode - simulate fake chat locally without going LIVE
 // ---------------------------------------------------------------------------
-const FAKE_USERS = ['sparkle_fan22', 'tiktok_lurker', 'moon.child', 'xX_gamerpro_Xx', 'lisa.loves.cats', 'big_dave99'];
-const FAKE_CHATTER = ['hi!', 'lol', 'omg', 'no way', '???', 'love this game', 'wait what', 'hmm', '😂😂😂', 'lets gooo'];
+const FAKE_USERS = ['sparkle_fan22', 'tiktok_lurker', 'moon.child', 'xX_gamerpro_Xx', 'lisa.loves.cats', 'big_dave99', 'mango_mia', 'zed.zone'];
+const FAKE_CHATTER = ['hi!', 'lol', 'omg', 'no way', '???', 'love this game', 'wait what', 'hmm', '😂😂😂', 'lets gooo', 'what do the symbols mean', 'sun = green??'];
 let testModeTimer = null;
 
 function startTestMode() {
@@ -289,30 +300,25 @@ function startTestMode() {
   testModeTimer = setInterval(
     safe('testMode:tick', () => {
       const user = FAKE_USERS[Math.floor(Math.random() * FAKE_USERS.length)];
-      let text;
       const state = engine.getPublicState();
-      // ~30% of the time, if a round is active, send a genuine guess at the answer.
-      if (state.status === 'active' && Math.random() < 0.3 && engine.current) {
-        text = engine.current.answer;
+      const active = state.status === 'active' && engine.current;
+      let text;
+      const roll = Math.random();
+      if (active && roll < 0.04 + 0.03 * state.rows.length) {
+        text = engine.current.answer; // somebody cracked it - more likely the more rows are on the board
+      } else if (active && roll < 0.7) {
+        text = engine.randomValidWord(); // a vote for the next row
       } else {
         text = FAKE_CHATTER[Math.floor(Math.random() * FAKE_CHATTER.length)];
       }
 
+      const label = `${user} (test)`;
       diagnostics.rawEventCount += 1;
-      diagnostics.lastReceived = { username: `${user} (test)`, text, ts: Date.now() };
+      diagnostics.lastReceived = { username: label, text, ts: Date.now() };
       broadcastDiagnostics();
-
-      const result = engine.handleGuess(user, user, text);
-      io.emit('chat:message', {
-        username: `${user} (test)`,
-        text,
-        ts: Date.now(),
-        correct: Boolean(result && result.correct),
-        points: result?.points || 0,
-        source: 'test',
-      });
+      emitChat(label, text, engine.handleGuess(user, label, text), 'test');
     }),
-    1800
+    1200
   );
 }
 function stopTestMode() {
@@ -328,7 +334,7 @@ io.on('connection', (socket) => {
   // Send current snapshot to the newly connected client.
   socket.emit('game:state', engine.getPublicState());
   socket.emit('game:leaderboard', engine.getLeaderboard());
-  socket.emit('game:packs', engine.getPacksSummary());
+  socket.emit('game:settings', engine.getSettings());
   socket.emit('diagnostics:update', diagnostics);
   socket.emit('tiktok:status', { state: diagnostics.connectionState, message: diagnostics.connectionMessage });
   socket.emit('server:config', {
@@ -361,8 +367,8 @@ io.on('connection', (socket) => {
     persistLeaderboard();
   }));
 
-  socket.on('host:setActivePacks', safe('socket:setActivePacks', (packIds) => {
-    engine.setActivePacks(Array.isArray(packIds) ? packIds : null);
+  socket.on('host:updateSettings', safe('socket:updateSettings', (patch) => {
+    engine.updateSettings(patch || {});
   }));
 
   socket.on('host:sendMessage', safe('socket:sendMessage', ({ name, text } = {}) => {
@@ -374,22 +380,14 @@ io.on('connection', (socket) => {
     diagnostics.lastReceived = { username: `${who} (host)`, text: clean, ts: Date.now() };
     broadcastDiagnostics();
 
-    const result = engine.handleGuess(who, who, clean);
-    io.emit('chat:message', {
-      username: `${who} (host)`,
-      text: clean,
-      ts: Date.now(),
-      correct: Boolean(result && result.correct),
-      points: result?.points || 0,
-      source: 'host',
-    });
+    emitChat(`${who} (host)`, clean, engine.handleGuess(who, who, clean), 'host');
   }));
 
   socket.on('host:addWord', safe('socket:addWord', (entry, ack) => {
     try {
       const clean = engine.addWord(entry || {});
-      const all = loadJsonSafe(CUSTOM_WORDS_PATH, []);
-      all.push(clean);
+      const all = loadJsonSafe(CUSTOM_WORDS_PATH, []).map((w) => String(w?.answer ?? w)).filter((w) => /^[A-Za-z]{5}$/.test(w));
+      if (!all.includes(clean.answer)) all.push(clean.answer);
       fs.writeFileSync(CUSTOM_WORDS_PATH, JSON.stringify(all, null, 2));
       if (typeof ack === 'function') ack({ ok: true });
     } catch (err) {
