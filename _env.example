@@ -1,0 +1,21 @@
+# Copy this file to ".env" for local testing. On Render.com, you will paste
+# these same values into the "Environment" tab instead of using this file.
+
+# The port the server listens on. Render sets this automatically, so you can
+# leave it as-is.
+PORT=3000
+
+# Your Euler Stream API key (used to sign the connection to TikTok LIVE).
+# Get a free key at https://www.eulerstream.com after creating an account.
+# You can leave this blank here and paste it into the Host Controls panel
+# in the browser instead - either place works.
+SIGN_API_KEY=
+
+# Optional: pre-fill your TikTok username (without the @) in the Host
+# Controls panel so you do not have to type it every time.
+DEFAULT_TIKTOK_USERNAME=
+
+# NOTE: There is no HOST_PASSWORD anymore. Host Controls (the gear icon)
+# are open to anyone who has the page's URL. Don't share your game's link
+# publicly if you don't want viewers opening Host Controls themselves -
+# just show it on your own screen/stream capture.

@@ -35,8 +35,10 @@ function safe(label, fn) {
 // ---------------------------------------------------------------------------
 // 1. Basic setup
 // ---------------------------------------------------------------------------
+// NOTE: There is intentionally no host password. Host Controls are open to
+// anyone with the page open. If you want to restrict who can reach the page
+// at all, put it behind Render's own access controls or don't share the URL.
 const PORT = process.env.PORT || 3000;
-const HOST_PASSWORD = process.env.HOST_PASSWORD || 'changeme123';
 const DEFAULT_TIKTOK_USERNAME = process.env.DEFAULT_TIKTOK_USERNAME || '';
 const ENV_SIGN_API_KEY = process.env.SIGN_API_KEY || '';
 
@@ -273,6 +275,7 @@ engine.on('stateChanged', safe('emit:stateChanged', (state) => io.emit('game:sta
 engine.on('leaderboardUpdated', safe('emit:leaderboard', (lb) => io.emit('game:leaderboard', lb)));
 engine.on('roundEnded', safe('emit:roundEnded', (payload) => io.emit('game:roundEnded', payload)));
 engine.on('wordBankUpdated', safe('emit:wordBank', (count) => io.emit('game:wordBankSize', count)));
+engine.on('packsUpdated', safe('emit:packsUpdated', (summary) => io.emit('game:packs', summary)));
 
 // ---------------------------------------------------------------------------
 // 6. Test mode - simulate fake chat locally without going LIVE
@@ -318,14 +321,14 @@ function stopTestMode() {
 }
 
 // ---------------------------------------------------------------------------
-// 7. Socket.IO wiring - all privileged actions require host auth first
+// 7. Socket.IO wiring - Host Controls are open to anyone on the page
+//    (no password gate - see note above PORT/HOST setup).
 // ---------------------------------------------------------------------------
 io.on('connection', (socket) => {
-  socket.authed = false;
-
   // Send current snapshot to the newly connected client.
   socket.emit('game:state', engine.getPublicState());
   socket.emit('game:leaderboard', engine.getLeaderboard());
+  socket.emit('game:packs', engine.getPacksSummary());
   socket.emit('diagnostics:update', diagnostics);
   socket.emit('tiktok:status', { state: diagnostics.connectionState, message: diagnostics.connectionMessage });
   socket.emit('server:config', {
@@ -333,51 +336,36 @@ io.on('connection', (socket) => {
     hasEnvSignKey: Boolean(ENV_SIGN_API_KEY),
   });
 
-  socket.on(
-    'host:auth',
-    safe('socket:host:auth', (password, ack) => {
-      const ok = String(password || '') === HOST_PASSWORD;
-      socket.authed = ok;
-      if (typeof ack === 'function') ack({ ok });
-    })
-  );
-
-  function requireAuth(fn) {
-    return (...args) => {
-      if (!socket.authed) {
-        socket.emit('host:error', 'Host login required for that action.');
-        return;
-      }
-      return fn(...args);
-    };
-  }
-
-  socket.on('host:connectTikTok', safe('socket:connectTikTok', requireAuth(({ username, signApiKey } = {}) => {
+  socket.on('host:connectTikTok', safe('socket:connectTikTok', ({ username, signApiKey } = {}) => {
     connectToTikTok(username, signApiKey);
-  })));
+  }));
 
-  socket.on('host:disconnectTikTok', safe('socket:disconnectTikTok', requireAuth(() => {
+  socket.on('host:disconnectTikTok', safe('socket:disconnectTikTok', () => {
     disconnectFromTikTok();
-  })));
+  }));
 
-  socket.on('host:startGame', safe('socket:startGame', requireAuth(() => {
+  socket.on('host:startGame', safe('socket:startGame', () => {
     engine.start();
-  })));
+  }));
 
-  socket.on('host:stopGame', safe('socket:stopGame', requireAuth(() => {
+  socket.on('host:stopGame', safe('socket:stopGame', () => {
     engine.stop();
-  })));
+  }));
 
-  socket.on('host:skipRound', safe('socket:skipRound', requireAuth(() => {
+  socket.on('host:skipRound', safe('socket:skipRound', () => {
     engine.skipRound();
-  })));
+  }));
 
-  socket.on('host:resetLeaderboard', safe('socket:resetLeaderboard', requireAuth(() => {
+  socket.on('host:resetLeaderboard', safe('socket:resetLeaderboard', () => {
     engine.resetLeaderboard();
     persistLeaderboard();
-  })));
+  }));
 
-  socket.on('host:sendMessage', safe('socket:sendMessage', requireAuth(({ name, text } = {}) => {
+  socket.on('host:setActivePacks', safe('socket:setActivePacks', (packIds) => {
+    engine.setActivePacks(Array.isArray(packIds) ? packIds : null);
+  }));
+
+  socket.on('host:sendMessage', safe('socket:sendMessage', ({ name, text } = {}) => {
     const who = String(name || 'Host').trim() || 'Host';
     const clean = String(text || '').trim();
     if (!clean) return;
@@ -395,9 +383,9 @@ io.on('connection', (socket) => {
       points: result?.points || 0,
       source: 'host',
     });
-  })));
+  }));
 
-  socket.on('host:addWord', safe('socket:addWord', requireAuth((entry, ack) => {
+  socket.on('host:addWord', safe('socket:addWord', (entry, ack) => {
     try {
       const clean = engine.addWord(entry || {});
       const all = loadJsonSafe(CUSTOM_WORDS_PATH, []);
@@ -407,13 +395,13 @@ io.on('connection', (socket) => {
     } catch (err) {
       if (typeof ack === 'function') ack({ ok: false, error: err.message });
     }
-  })));
+  }));
 
-  socket.on('host:testMode', safe('socket:testMode', requireAuth((enabled) => {
+  socket.on('host:testMode', safe('socket:testMode', (enabled) => {
     if (enabled) startTestMode();
     else stopTestMode();
     io.emit('testMode:status', Boolean(enabled));
-  })));
+  }));
 
   socket.on('disconnect', () => {
     // No per-socket cleanup needed - state lives on the server, not the socket.
@@ -425,7 +413,4 @@ io.on('connection', (socket) => {
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`Symble Live server running on port ${PORT}`);
-  if (HOST_PASSWORD === 'changeme123') {
-    console.warn('[SECURITY] You are using the default HOST_PASSWORD. Change it before going live!');
-  }
 });

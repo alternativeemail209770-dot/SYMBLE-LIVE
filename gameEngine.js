@@ -47,7 +47,7 @@ function isCorrectGuess(guess, answer) {
   return false;
 }
 
-/** Build the "_ _ _ ' _ _" style blank pattern for the board. */
+/** Build the "_ _ _ ' _ _" style blank pattern for the board (legacy plain-text form). */
 function buildBlanks(answer, revealedIndices) {
   return answer
     .split('')
@@ -57,6 +57,15 @@ function buildBlanks(answer, revealedIndices) {
       return revealedIndices.has(i) ? answer[i] : '_';
     })
     .join(' ');
+}
+
+/** Structured per-character tiles for a letter-tile UI: [{ch, revealed, isSpace, isPunct}]. */
+function buildTiles(answer, revealedIndices) {
+  return answer.split('').map((ch, i) => {
+    if (ch === ' ') return { ch: ' ', revealed: true, isSpace: true, isPunct: false };
+    if (!/[a-zA-Z0-9]/.test(ch)) return { ch, revealed: true, isSpace: false, isPunct: true };
+    return { ch, revealed: revealedIndices.has(i), isSpace: false, isPunct: false };
+  });
 }
 
 const STATUS = {
@@ -78,6 +87,7 @@ export class GameEngine extends EventEmitter {
     this.usedRecently = [];
     this.leaderboard = new Map(); // key: lowercased username -> {name, score, correct}
     this.roundNumber = 0;
+    this.activePackIds = null; // null/empty = every pack is in rotation
 
     this.status = STATUS.IDLE;
     this.current = null; // { answer, emojis, category, difficulty, revealedIndices, ... }
@@ -95,6 +105,7 @@ export class GameEngine extends EventEmitter {
       answer: String(entry.answer || '').toUpperCase().trim(),
       emojis: Array.isArray(entry.emojis) ? entry.emojis.filter(Boolean) : String(entry.emojis || '').split(/\s+/).filter(Boolean),
       category: String(entry.category || 'Custom').trim() || 'Custom',
+      pack: String(entry.pack || 'custom').trim() || 'custom',
       difficulty: Math.min(3, Math.max(1, parseInt(entry.difficulty, 10) || 1)),
     };
     if (!clean.answer || clean.emojis.length === 0) {
@@ -102,7 +113,27 @@ export class GameEngine extends EventEmitter {
     }
     this.wordBank.push(clean);
     this.emit('wordBankUpdated', this.wordBank.length);
+    this.emit('packsUpdated', this.getPacksSummary());
     return clean;
+  }
+
+  /** Restrict future rounds to the given pack ids. Pass null/empty for "all packs". */
+  setActivePacks(packIds) {
+    this.activePackIds = Array.isArray(packIds) && packIds.length ? new Set(packIds) : null;
+    this.emit('packsUpdated', this.getPacksSummary());
+  }
+
+  /** Distinct packs currently in the word bank, with word counts, for the host UI. */
+  getPacksSummary() {
+    const counts = new Map();
+    for (const w of this.wordBank) {
+      const id = w.pack || 'custom';
+      counts.set(id, (counts.get(id) || 0) + 1);
+    }
+    return {
+      packs: [...counts.entries()].map(([id, count]) => ({ id, count })),
+      active: this.activePackIds ? [...this.activePackIds] : null,
+    };
   }
 
   // -------------------------------------------------------------------
@@ -144,11 +175,15 @@ export class GameEngine extends EventEmitter {
   // -------------------------------------------------------------------
 
   _pickWord() {
-    const pool = this.wordBank.filter((w) => !this.usedRecently.includes(w.answer));
-    const source = pool.length ? pool : this.wordBank;
+    const inActivePacks = this.activePackIds
+      ? this.wordBank.filter((w) => this.activePackIds.has(w.pack))
+      : this.wordBank;
+    const base = inActivePacks.length ? inActivePacks : this.wordBank; // never fully empty
+    const pool = base.filter((w) => !this.usedRecently.includes(w.answer));
+    const source = pool.length ? pool : base;
     const word = source[Math.floor(Math.random() * source.length)];
     this.usedRecently.push(word.answer);
-    if (this.usedRecently.length > Math.max(5, Math.floor(this.wordBank.length / 2))) {
+    if (this.usedRecently.length > Math.max(5, Math.floor(base.length / 2))) {
       this.usedRecently.shift();
     }
     return word;
@@ -165,6 +200,7 @@ export class GameEngine extends EventEmitter {
       answer: word.answer,
       emojis: word.emojis,
       category: word.category,
+      pack: word.pack || 'custom',
       difficulty: word.difficulty,
       revealedIndices: new Set(),
       hintsGiven: 0,
@@ -291,9 +327,11 @@ export class GameEngine extends EventEmitter {
       roundNumber: this.roundNumber,
       wordBankSize: this.wordBank.length,
       category: c.category,
+      pack: c.pack,
       difficulty: c.difficulty,
       emojis: c.emojis,
       blanks: buildBlanks(c.answer, c.revealedIndices),
+      tiles: buildTiles(c.answer, c.revealedIndices),
       answer: c.revealedAnswer ? c.answer : null,
       winner: c.winner,
       hintsGiven: c.hintsGiven,
