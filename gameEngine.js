@@ -1,15 +1,17 @@
 import { EventEmitter } from 'events';
 
 // ===========================================================================
-// SYMBLE - the rules, in one place
+// TWISTLE - the rules, in one place
 // ---------------------------------------------------------------------------
-// * A secret 5-letter word is chosen.
+// * A secret word is chosen. Its length is set by the host: one fixed length
+//   anywhere from 4 to 20 letters, or a random length picked each round from a
+//   range the host chooses (say, anywhere from 5 to 9 letters).
 // * Every round, 3 symbols are drawn at random and each is secretly assigned
 //   one meaning:  "correct spot", "wrong spot", or "not in the guess".
 //   Nobody is told which symbol means what - players have to work it out.
 //   The 3 symbols are always picked to look VERY different from each other
 //   (different colour AND different silhouette) so they can't be confused.
-// * When a word is guessed, the board shows 5 symbols next to it. Symbol #1
+// * When a word is guessed, the board shows one symbol per letter next to it. Symbol #1
 //   describes the SECRET word's 1st letter, symbol #2 its 2nd letter, and so on
 //   (NOT the letters of the guess!):
 //       correct   -> the guess has that same letter in that same position
@@ -20,7 +22,7 @@ import { EventEmitter } from 'events';
 // * The colours of the guessed tiles stay hidden until the round is over.
 //
 // HOW IT PLAYS ON TIKTOK LIVE
-// * Every valid 5-letter word typed in chat that hasn't been guessed yet goes
+// * Every valid word of the round's length typed in chat that hasn't been guessed yet goes
 //   straight onto the board as a new row, with no vote and no waiting.
 // * Anyone who types the SECRET word wins the round instantly.
 // * There's no timer and no cap on the number of guesses: the round keeps
@@ -28,7 +30,27 @@ import { EventEmitter } from 'events';
 //   skips the round.
 // ===========================================================================
 
-export const WORD_LENGTH = 5;
+export const MIN_LENGTH = 4;
+export const MAX_LENGTH = 20;
+export const DEFAULT_LENGTH_CONFIG = { mode: 'fixed', fixed: 5, min: 4, max: 8 };
+
+/**
+ * Tidy up a word-length setting from the host.
+ *   mode  'fixed'  -> every round uses `fixed` letters
+ *         'random' -> every round picks a random length from min..max
+ * Numbers are clamped to 4-20, and min/max are swapped if they're the wrong way round.
+ */
+export function normalizeLengthConfig(cfg = {}, base = DEFAULT_LENGTH_CONFIG) {
+  const clampLen = (n, fallback) => {
+    n = Math.round(Number(n));
+    return Number.isFinite(n) ? Math.min(MAX_LENGTH, Math.max(MIN_LENGTH, n)) : fallback;
+  };
+  const mode = cfg.mode === 'random' ? 'random' : cfg.mode === 'fixed' ? 'fixed' : base.mode;
+  let min = clampLen(cfg.min ?? base.min, base.min);
+  let max = clampLen(cfg.max ?? base.max, base.max);
+  if (min > max) [min, max] = [max, min];
+  return { mode, fixed: clampLen(cfg.fixed ?? base.fixed, base.fixed), min, max };
+}
 export const CONCEPTS = ['correct', 'misplaced', 'absent'];
 // ---------------------------------------------------------------------------
 // Symbols. Ids must match the SVG symbols drawn in public/index.html.
@@ -97,10 +119,10 @@ export function normalize(text) {
 
 /**
  * Turn a chat comment into a guess, or null if it isn't one.
- * Accepts "crane", "Crane!", "!guess crane", "!g crane". Anything with other
- * words in it is normal chatter and is ignored.
+ * Accepts "crane", "Crane!", "!guess crane", "!g crane". Only a single word of
+ * exactly `length` letters counts; anything else is normal chatter and is ignored.
  */
-export function parseGuess(text) {
+export function parseGuess(text, length = 5) {
   const tokens = String(text || '')
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -110,7 +132,7 @@ export function parseGuess(text) {
   if (tokens.length && /^[!/](g|guess)$/i.test(tokens[0])) tokens.shift();
   if (tokens.length !== 1) return null;
   const word = tokens[0].replace(/^[!/]/, '').replace(/[!?.,:;'"]+$/, '');
-  return /^[A-Za-z]{5}$/.test(word) ? word.toUpperCase() : null;
+  return word.length === length && /^[A-Za-z]+$/.test(word) ? word.toUpperCase() : null;
 }
 
 function shuffle(list) {
@@ -172,21 +194,25 @@ export function evaluateGuess(answer, guess) {
 
 export class GameEngine extends EventEmitter {
   /**
-   * @param {string[]} answers     words that can be the secret word
+   * @param {string[]} answers     words that can be the secret word (any mix of lengths 4-20)
    * @param {string[]} validWords  extra words that are accepted as guesses
+   * @param {object}   lengthConfig  { mode, fixed, min, max } - see normalizeLengthConfig
    */
-  constructor(answers = [], validWords = []) {
+  constructor(answers = [], validWords = [], lengthConfig = {}) {
     super();
     const clean = (list) => [...new Set(
       (Array.isArray(list) ? list : [])
         .map((w) => String(w?.answer ?? w ?? '').toUpperCase().trim())
-        .filter((w) => /^[A-Z]{5}$/.test(w))
+        .filter((w) => /^[A-Z]{4,20}$/.test(w))
     )];
     this.answers = clean(answers);
     if (!this.answers.length) this.answers = ['SHAKE', 'THICK', 'SHOOK', 'STARE', 'SOLID'];
     this.valid = new Set([...this.answers, ...clean(validWords)]);
+    this._indexAnswers();
 
-    this.usedRecently = [];
+    this.config = normalizeLengthConfig(lengthConfig);
+    this.usedRecently = new Map(); // length -> recently used secret words of that length
+    this.lastLength = null;
     this.roundNumber = 0;
 
     this.status = STATUS.IDLE;
@@ -200,20 +226,75 @@ export class GameEngine extends EventEmitter {
 
   get wordBankSize() { return this.answers.length; }
 
+  _indexAnswers() {
+    this.byLength = new Map();
+    for (const w of this.answers) {
+      if (!this.byLength.has(w.length)) this.byLength.set(w.length, []);
+      this.byLength.get(w.length).push(w);
+    }
+  }
+
+  /** Lengths that have at least one secret word, e.g. [4, 5, 6, ...]. */
+  availableLengths() {
+    return [...this.byLength.keys()].sort((a, b) => a - b);
+  }
+
+  /** How many secret words there are for each length: { 4: 669, 5: 885, ... } */
+  lengthCounts() {
+    const out = {};
+    for (const n of this.availableLengths()) out[n] = this.byLength.get(n).length;
+    return out;
+  }
+
   addWord(entry) {
     const answer = String(entry?.answer ?? entry ?? '').toUpperCase().trim();
-    if (!/^[A-Z]{5}$/.test(answer)) {
-      throw new Error('A Symble word must be exactly 5 letters (A-Z, no spaces).');
+    if (!/^[A-Z]{4,20}$/.test(answer)) {
+      throw new Error(`A Twistle word must be ${MIN_LENGTH}-${MAX_LENGTH} letters (A-Z, no spaces).`);
     }
-    if (!this.answers.includes(answer)) this.answers.push(answer);
+    if (!this.answers.includes(answer)) {
+      this.answers.push(answer);
+      this._indexAnswers();
+    }
     this.valid.add(answer);
     this.emit('wordBankUpdated', this.answers.length);
+    this.emit('stateChanged', this.getPublicState());
     return { answer };
   }
 
-  /** A familiar word, used by Test Mode for fake guesses. */
-  randomValidWord() {
-    return this.answers[Math.floor(Math.random() * this.answers.length)];
+  /** A familiar word of the current round's length, used by Test Mode for fake guesses. */
+  randomValidWord(length = this.current?.length) {
+    const list = this.byLength.get(length) || this.answers;
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  // -------------------------------------------------------------------
+  // Word-length setting (host chooses fixed or a random range)
+  // -------------------------------------------------------------------
+
+  /** Change the word-length setting. It takes effect from the next round. */
+  setLengthConfig(cfg) {
+    this.config = normalizeLengthConfig(cfg, this.config);
+    this.emit('configChanged', this.config);
+    this.emit('stateChanged', this.getPublicState());
+    return this.config;
+  }
+
+  /** The lengths a new round may use under the current setting (only lengths that have words). */
+  _allowedLengths() {
+    const avail = this.availableLengths();
+    const { mode, fixed, min, max } = this.config;
+    const wanted = mode === 'fixed' ? avail.filter((n) => n === fixed) : avail.filter((n) => n >= min && n <= max);
+    if (wanted.length) return wanted;
+    // Nothing available there: use the closest length that does have words.
+    const target = mode === 'fixed' ? fixed : (min + max) / 2;
+    return [avail.reduce((best, n) => (Math.abs(n - target) < Math.abs(best - target) ? n : best), avail[0])];
+  }
+
+  _pickLength() {
+    const allowed = this._allowedLengths();
+    // In random mode, avoid the same length twice in a row when there's a choice.
+    const options = allowed.length > 1 ? allowed.filter((n) => n !== this.lastLength) : allowed;
+    return options[Math.floor(Math.random() * options.length)];
   }
 
   // -------------------------------------------------------------------
@@ -251,17 +332,22 @@ export class GameEngine extends EventEmitter {
   // Round setup
   // -------------------------------------------------------------------
 
-  _pickWord() {
-    const pool = this.answers.filter((w) => !this.usedRecently.includes(w));
-    const source = pool.length ? pool : this.answers;
+  _pickWord(length) {
+    const all = this.byLength.get(length);
+    const used = this.usedRecently.get(length) || [];
+    const pool = all.filter((w) => !used.includes(w));
+    const source = pool.length ? pool : all;
     const word = source[Math.floor(Math.random() * source.length)];
-    this.usedRecently.push(word);
-    if (this.usedRecently.length > Math.min(150, Math.floor(this.answers.length / 2))) this.usedRecently.shift();
+    used.push(word);
+    if (used.length > Math.min(150, Math.floor(all.length / 2))) used.shift();
+    this.usedRecently.set(length, used);
     return word;
   }
 
   _startRound() {
-    const answer = this._pickWord();
+    const length = this._pickLength();
+    this.lastLength = length;
+    const answer = this._pickWord(length);
     this.roundNumber += 1;
 
     // 3 random symbols (always a clearly-different-looking trio), each given
@@ -273,6 +359,7 @@ export class GameEngine extends EventEmitter {
 
     this.current = {
       answer,
+      length,
       symbolMap,        // { correct: 'sun', misplaced: 'drop', absent: 'heart' } - secret until the reveal
       rows: [],          // guesses, in the order they landed on the board
       guessed: new Set(), // words already on the board, so nobody can repeat one
@@ -317,7 +404,7 @@ export class GameEngine extends EventEmitter {
   handleGuess(username, displayName, text) {
     if (this.status !== STATUS.ACTIVE || !this.current) return null;
     const c = this.current;
-    const word = parseGuess(text);
+    const word = parseGuess(text, c.length);
     if (!word) return null;
 
     const name = displayName || username || 'viewer';
@@ -356,7 +443,10 @@ export class GameEngine extends EventEmitter {
       status: this.status,
       roundNumber: this.roundNumber,
       wordBankSize: this.answers.length,
-      wordLength: WORD_LENGTH,
+      // Length of the current round's word (or, before a game starts, the fixed length - or null for a random range).
+      wordLength: this.current ? this.current.length : (this.config.mode === 'fixed' ? this.config.fixed : null),
+      config: { ...this.config },
+      lengthCounts: this.lengthCounts(),
     };
     if (!this.current) return { ...base, rows: [] };
 

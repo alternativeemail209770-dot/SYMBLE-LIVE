@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { TikTokLiveConnection, WebcastEvent, ControlEvent } from 'tiktok-live-connector';
-import { GameEngine, SYMBOL_POOL } from './gameEngine.js';
+import { GameEngine, SYMBOL_POOL, MIN_LENGTH, MAX_LENGTH, normalizeLengthConfig } from './gameEngine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,13 +48,13 @@ const app = express();
 // Which page to show. The game page is normally public/index.html, but it's easy
 // to upload a new copy next to server.js by accident and leave the OLD one in
 // public/ (the old page then shows stale things like "undefined" and missing
-// symbols). Each page carries a <meta name="symble-build"> number, and the
+// symbols). Each page carries a <meta name="twistle-build"> number, and the
 // server simply serves whichever copy is newest - so that mistake can't bite.
 // ---------------------------------------------------------------------------
 const PAGE_FILES = [path.join(__dirname, 'public', 'index.html'), path.join(__dirname, 'index.html')];
 function pageBuild(file) {
   try {
-    const m = fs.readFileSync(file, 'utf-8').match(/name=["']symble-build["']\s+content=["'](\d+)["']/);
+    const m = fs.readFileSync(file, 'utf-8').match(/name=["']twistle-build["']\s+content=["'](\d+)["']/);
     return m ? Number(m[1]) : 0; // pages from before this feature count as build 0
   } catch {
     return -1; // file doesn't exist
@@ -78,13 +78,14 @@ const io = new SocketIOServer(server, { cors: { origin: '*' } });
 
 // ---------------------------------------------------------------------------
 // 2. Word lists, loaded from disk
-//    words.json         - the secret words (answers)
-//    guesses.json       - every other word viewers are allowed to guess
+//    words.json         - the secret words (answers), any mix of lengths from 4 to 20 letters
+//    guesses.json       - every other word viewers are allowed to guess (also any length)
 //    words-custom.json  - secret words the host adds from the "Add Word" tab
 // ---------------------------------------------------------------------------
 const WORDS_PATH = path.join(__dirname, 'words.json');
 const GUESSES_PATH = path.join(__dirname, 'guesses.json');
 const CUSTOM_WORDS_PATH = path.join(__dirname, 'words-custom.json');
+const SETTINGS_PATH = path.join(__dirname, 'settings.json'); // remembers the host's word-length setting
 
 function loadJsonSafe(filePath, fallback) {
   try {
@@ -100,7 +101,9 @@ function loadJsonSafe(filePath, fallback) {
 const builtInWords = loadJsonSafe(WORDS_PATH, []);
 const validGuesses = loadJsonSafe(GUESSES_PATH, []);
 const customWords = loadJsonSafe(CUSTOM_WORDS_PATH, []);
-const engine = new GameEngine([...builtInWords, ...customWords], validGuesses);
+const savedSettings = loadJsonSafe(SETTINGS_PATH, {});
+const engine = new GameEngine([...builtInWords, ...customWords], validGuesses, savedSettings.lengthConfig || {});
+console.log(`[WORDS] ${engine.wordBankSize} secret words, ${engine.valid.size} accepted guesses. Word length: ${JSON.stringify(engine.config)}`);
 
 // ---------------------------------------------------------------------------
 // 3. Connection state (remembered so a page opened mid-stream shows the
@@ -260,6 +263,14 @@ async function disconnectFromTikTok() {
 // ---------------------------------------------------------------------------
 engine.on('stateChanged', safe('emit:stateChanged', (state) => io.emit('game:state', state)));
 engine.on('wordBankUpdated', safe('emit:wordBank', (count) => io.emit('game:wordBankSize', count)));
+// Remember the word-length setting so it survives a restart (best effort - Render's free tier wipes files on redeploy).
+engine.on('configChanged', safe('save:settings', (config) => {
+  try {
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify({ lengthConfig: config }, null, 2));
+  } catch (err) {
+    console.error('[SETTINGS] Could not save settings:', err.message);
+  }
+}));
 
 // ---------------------------------------------------------------------------
 // 6. Test mode - simulate fake chat locally without going LIVE
@@ -307,6 +318,8 @@ io.on('connection', (socket) => {
     defaultUsername: DEFAULT_TIKTOK_USERNAME,
     hasEnvSignKey: Boolean(ENV_SIGN_API_KEY),
     symbols: SYMBOL_POOL,
+    minLength: MIN_LENGTH,
+    maxLength: MAX_LENGTH,
   });
 
   socket.on('host:connectTikTok', safe('socket:connectTikTok', ({ username, signApiKey } = {}) => {
@@ -323,6 +336,11 @@ io.on('connection', (socket) => {
 
   socket.on('host:stopGame', safe('socket:stopGame', () => {
     engine.stop();
+  }));
+
+  socket.on('host:setLength', safe('socket:setLength', (cfg, ack) => {
+    const config = engine.setLengthConfig(normalizeLengthConfig(cfg || {}, engine.config));
+    if (typeof ack === 'function') ack({ ok: true, config });
   }));
 
   socket.on('host:revealAnswer', safe('socket:revealAnswer', () => {
@@ -344,7 +362,7 @@ io.on('connection', (socket) => {
   socket.on('host:addWord', safe('socket:addWord', (entry, ack) => {
     try {
       const clean = engine.addWord(entry || {});
-      const all = loadJsonSafe(CUSTOM_WORDS_PATH, []).map((w) => String(w?.answer ?? w)).filter((w) => /^[A-Za-z]{5}$/.test(w));
+      const all = loadJsonSafe(CUSTOM_WORDS_PATH, []).map((w) => String(w?.answer ?? w)).filter((w) => /^[A-Za-z]{4,20}$/.test(w));
       if (!all.includes(clean.answer)) all.push(clean.answer);
       fs.writeFileSync(CUSTOM_WORDS_PATH, JSON.stringify(all, null, 2));
       if (typeof ack === 'function') ack({ ok: true });
@@ -368,5 +386,5 @@ io.on('connection', (socket) => {
 // 8. Go!
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {
-  console.log(`Symble Live server running on port ${PORT}`);
+  console.log(`Twistle server running on port ${PORT}`);
 });

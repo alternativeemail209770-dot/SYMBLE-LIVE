@@ -1,7 +1,7 @@
 {
-  "name": "symble-live-game",
+  "name": "twistle-live-game",
   "version": "1.0.0",
-  "description": "Symble Live - an emoji/symbol word-guessing game for TikTok LIVE chat",
+  "description": "TWISTLE - a symbol word-guessing game (4-20 letter words) for TikTok LIVE chat",
   "type": "module",
   "private": true,
   "engines": {

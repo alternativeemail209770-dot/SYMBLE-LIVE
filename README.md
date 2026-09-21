@@ -1,10 +1,11 @@
-# Symble Live — TikTok LIVE Word Guessing Game
+# TWISTLE — TikTok LIVE Word Guessing Game
 
-A fully automated version of **Symble** that reads your TikTok LIVE chat in
-real time. Viewers work together to crack a secret 5-letter word using a board
-of guesses and a column of mystery symbols. There's no timer and no limit on
-guesses — every valid 5-letter word that hasn't been tried yet goes straight
-onto the board, and the round keeps going until someone types the secret word,
+A fully automated word game that reads your TikTok LIVE chat in real time.
+Viewers work together to crack a secret word using a board of guesses and a
+row of mystery symbols. **You choose the word length: any single length from
+4 to 20 letters, or a random length picked each round from a range you set.**
+There's no timer and no limit on guesses — every valid word of the right length
+that hasn't been tried yet goes straight onto the board, and the round keeps going until someone types the secret word,
 the host reveals the answer, or the host skips the round.
 
 There is **no host password**. The gear icon opens Host Controls for anyone
@@ -17,16 +18,16 @@ order. It should take about 20–30 minutes the first time.
 
 ## How the game works
 
-**The rules of Symble**
+**The rules of Twistle**
 
-- Every round has a secret 5-letter word and **3 random symbols**. The three
+- Every round has a secret word (4–20 letters, set by the host) and **3 random symbols**. The three
   are always picked to look very different from each other (a different colour
   *and* a different shape), so they can't be mixed up. Each symbol secretly
   means one thing, and nobody is told which:
   - *right spot* — that letter is in the guess, in the same position
   - *wrong spot* — that letter is in the guess, but somewhere else
   - *not in your guess* — that letter isn't in the guess
-- Every guess on the board gets a row of **5 symbols** beside it. The catch:
+- Every guess on the board gets a row of **symbols (one per letter)** beside or below it. The catch:
   the symbols line up with the letters of the **secret word**, not with the
   letters of the guess. Symbol 1 is about the secret word's 1st letter,
   symbol 2 about its 2nd letter, and so on.
@@ -41,16 +42,17 @@ The **?** button in the top bar shows this to your viewers, with a worked exampl
 
 **How it plays in TikTok chat**
 
-- Any real 5-letter word a viewer types that hasn't already been guessed this
-  round goes **straight onto the board** — no vote, no waiting. Its row of 5
-  symbols appears immediately.
+- Any real word with the same number of letters as the secret word, that
+  hasn't already been guessed this round, goes **straight onto the board** — no
+  vote, no waiting. Its row of symbols (one per letter) appears immediately.
 - **Anyone who types the secret word wins the round instantly.**
 - There's no timer and no cap on the number of guesses. The round keeps going
   until someone solves it, or the host reveals the answer / skips the round
   from Host Controls → Game. A few seconds after a round ends, the next one
   starts automatically.
-- Chat that isn't a single 5-letter word (like "lol" or "omg so hard") is
-  ignored by the game. Viewers can also type `!guess crane` if they prefer.
+- Chat that isn't a single word of the right length (like "lol" or "omg so
+  hard") is ignored by the game. Viewers can also type `!guess crane` if they
+  prefer. The board always tells viewers how many letters to type.
 - If a word has already been guessed this round, or isn't in the word list,
   the game simply ignores it — the viewer can try something else.
 
@@ -59,11 +61,11 @@ The **?** button in the top bar shows this to your viewers, with a worked exampl
 ## What you're getting (the files)
 
 ```
-symble-live-game/
+twistle-live-game/
 ├── server.js            <- the "brain": connects to TikTok, runs the game
-├── gameEngine.js         <- the Symble rules: symbols, rows, scoring
-├── words.json             <- the secret words (880+ everyday 5-letter words)
-├── guesses.json           <- every other word viewers are allowed to guess (6,500+)
+├── gameEngine.js         <- the Twistle rules: word lengths, symbols, rows, scoring
+├── words.json             <- the secret words: ~5,900 everyday words, 4 to 20 letters long
+├── guesses.json           <- every other word viewers may guess (~105,000, 4 to 20 letters)
 ├── package.json           <- tells the server what software it needs
 ├── .env.example            <- template for your settings
 ├── .gitignore
@@ -112,11 +114,11 @@ Download every file listed above, keeping the exact folder structure (the
 
 1. Go to **https://github.com** and sign in (or create a free account).
 2. Click the **+** icon (top right) → **New repository**.
-3. Name it `symble-live-game`, keep it **Public** or **Private** (either
+3. Name it `twistle-live-game`, keep it **Public** or **Private** (either
    works), leave everything else unchecked, and click **Create repository**.
 4. On the next page, click **"uploading an existing file"**.
 5. Drag in **all the files and folders** from Step 2 (yes, you can drag the
-   whole `symble-live-game` folder contents in one go, including the
+   whole `twistle-live-game` folder contents in one go, including the
    `public` sub-folder — GitHub keeps the folder structure).
 6. Scroll down and click **Commit changes**.
 
@@ -130,10 +132,10 @@ You now have a GitHub repository Render can deploy from.
    "Sign up with GitHub," which also connects your account automatically.
 2. From the Render dashboard, click **New +** → **Web Service**.
 3. Choose **Build and deploy from a Git repository**, then select the
-   `symble-live-game` repo you just created. (If you don't see it, click
+   `twistle-live-game` repo you just created. (If you don't see it, click
    "Configure account" and give Render access to that repo.)
 4. Fill in the settings:
-   - **Name**: anything you like, e.g. `symble-live`
+   - **Name**: anything you like, e.g. `twistle-live`
    - **Region**: pick the one closest to you
    - **Branch**: `main`
    - **Runtime**: Node
@@ -150,9 +152,9 @@ You now have a GitHub repository Render can deploy from.
 
 6. Click **Create Web Service**. Render will install everything and start
    the server — this takes 2–5 minutes the first time. Watch the "Logs" tab;
-   when you see `Symble Live server running on port ...` it's ready.
+   when you see `Twistle server running on port ...` it's ready.
 7. At the top of the page, Render shows your live URL, something like
-   `https://symble-live.onrender.com`. Open it — that's your game!
+   `https://twistle-live.onrender.com`. Open it — that's your game!
 
 > **Note on the free tier:** Render's free web services "spin down" after
 > 15 minutes of no traffic and take ~30–60 seconds to wake back up on the
@@ -186,11 +188,11 @@ You don't need to be live on TikTok to try this out:
    every so often one of them will "solve" the puzzle.
 2. Open the **Game** tab and tap **▶ Start Game**.
 3. Watch the board: each fresh, valid guess lands on the board immediately
-   with its 5 symbols, and when a round ends the tiles flip to their colours
+   with its row of symbols, and when a round ends the tiles flip to their colours
    and the answer and symbol meanings are revealed.
 4. You can also type guesses yourself in the **Message** tab. A fresh, valid
-   5-letter word goes straight onto the board, and the secret word wins the
-   round.
+   word of the right length goes straight onto the board, and the secret word
+   wins the round.
 5. The **Connect** tab shows the current connection status underneath the
    buttons (for example "Connected to room ..."), and any error message if
    something goes wrong. Chat messages themselves are never displayed or
@@ -213,8 +215,9 @@ When you're happy, turn Test Mode back **off**.
    into the game — no further setup needed.
 6. Share your screen (or point your camera at your phone) so your viewers
    can see the board while they type answers in your normal TikTok chat.
-   A good pinned comment: *"Type a 5-letter word — a good guess goes
-   straight on the board. Type the secret word to win!"*
+   A good pinned comment: *"Type a word with the right number of
+   letters — a good guess goes straight on the board. Type the secret word to
+   win!"*
 7. When you want to move on, use **Host Controls → Game → Reveal Answer**
    (shows the answer and ends the round normally) or **Skip Round** (abandons
    the current round). Either way, the next round starts automatically a few
@@ -227,15 +230,27 @@ When you're happy, turn Test Mode back **off**.
 - **Round control**: Host Controls → **Game**. Start/Stop the game, or use
   **Reveal Answer** / **Skip Round** to end the current round early — there's
   no timer, so a round otherwise runs until someone solves it.
-- **Add secret words**: Host Controls → **Add Word**. Type any 5-letter word and
-  tap **Add to Word Bank**. It can come up as a secret word from then on.
+- **Word length**: Host Controls → **Game → Word length**. Choose **Fixed
+  length** and pick anything from 4 to 20 letters, or **Random range** and pick
+  a shortest and longest length — each round then uses a random length in that
+  range (never the same length twice in a row, when there's a choice). The
+  choice is remembered if the server restarts. A change takes effect from the
+  *next* round; tap **Skip Round** to switch right away. The tiles and symbols
+  resize themselves for every length: short words show the letters with the
+  symbols beside them, longer words put the symbols in a strip underneath, and
+  the longest words wrap onto a second (or third) line so nothing gets tiny.
+- **Add secret words**: Host Controls → **Add Word**. Type any word from 4 to 20
+  letters and tap **Add to Word Bank**. It can come up as a secret word from
+  then on (in rounds of that length).
   Render's free tier wipes files whenever it redeploys, so to keep a word
   forever, add it to `words.json` on GitHub as well (see next point).
 - **Change the built-in words**: open `words.json` on GitHub, click the pencil
-  (✏️) icon to edit, and add or remove words. Each one is 5 capital letters in
-  quotes, followed by a comma (except the last one). Commit, then redeploy in
+  (✏️) icon to edit, and add or remove words. Each one is capital letters in quotes
+  (any length from 4 to 20), followed by a comma (except the last one). The
+  game sorts them by length itself, so they can go anywhere in the list. Commit, then redeploy in
   Render (Manual Deploy → Deploy latest commit). `guesses.json` works the same
-  way; it's the list of extra words viewers may guess with. Anything in
+  way; it's the (much bigger) list of extra words viewers may guess with, and
+  you rarely need to touch it. Anything in
   `words.json` is also accepted as a guess automatically.
 
 ---
@@ -267,9 +282,20 @@ the Euler Stream key is missing/invalid. Re-check Step 7 and try again —
 the game always retries automatically before giving up.
 
 **A viewer's guess didn't appear on the board.**
-The game silently ignores anything that isn't a single 5-letter word, a word
-not in the list, or a word that's already been guessed this round — the
-viewer just needs to try something else.
+The game silently ignores anything that isn't a single word with exactly as
+many letters as the secret word (check the "N letters" label at the top of the
+board), a word not in the list, or a word that's already been guessed this
+round — the viewer just needs to try something else.
+
+**A round has an unusually hard word (very long words especially).**
+Words of 15+ letters are genuinely tough. Use **Skip Round** or **Reveal
+Answer**, or narrow the Word length range in Host Controls → Game.
+
+**The secret-word list has a word I don't like / is missing one.**
+Edit `words.json` on GitHub (see "Customizing the game"). The built-in list
+already leaves out profanity, slurs, sexual terms, drugs, alcohol, and violence.
+The very long words (11+ letters) were assembled from everyday roots and
+suffixes, so a few may be unusual; delete any you don't want.
 
 **The page looks fine but nothing updates.**
 Refresh the page once. The browser reconnects to the server automatically,
