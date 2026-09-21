@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="symble-build" content="4" />
 <title>Symble Live</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,6 +28,7 @@
     --radius-md: 16px;
     --radius-sm: 11px;
     --vh: 1vh;
+    --board-w: 640px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -86,21 +88,22 @@
   /* ---------------- Main ---------------- */
   main {
     flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 14px 14px 20px; display: flex; flex-direction: column; gap: 14px;
+    padding: 10px 10px 18px; display: flex; flex-direction: column; gap: 10px;
   }
 
   /* ---------------- Board ---------------- */
   .board {
     background: linear-gradient(160deg, var(--panel) 0%, var(--panel-2) 100%);
     border-radius: var(--radius-lg);
-    padding: 16px 12px 18px;
+    padding: 14px 12px 18px;
+    flex: 1 0 auto;
     border: 1px solid var(--line);
     position: relative;
     box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   }
   .board .meta-row {
     display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    margin: 0 auto 12px; max-width: 420px;
+    margin: 0 auto 12px; max-width: var(--board-w);
   }
   .round-chip {
     display: inline-flex; align-items: center; gap: 7px;
@@ -119,16 +122,17 @@
   .guess-badge[hidden] { display: none; }
 
   /* The guess grid: 5 letter tiles | divider | 5 symbols */
-  .grid { display: grid; row-gap: 6px; max-width: 420px; margin: 0 auto; }
+  .grid { container-type: inline-size; width: 100%; display: grid; row-gap: 6px; max-width: var(--board-w); margin: 0 auto; }
   .grow {
-    display: grid; grid-template-columns: repeat(5, 1fr) 4px repeat(5, 0.86fr);
+    display: grid; grid-template-columns: repeat(5, 1fr) 10px repeat(5, 0.86fr);
     column-gap: 4px; align-items: center;
   }
-  .gdiv { align-self: stretch; margin: -3px 0; background: #e9e9fa; border-radius: 2px; opacity: 0.85; }
+  .gspace { min-width: 0; } /* empty gap between the letters and the symbols - no line */
   .tile {
     aspect-ratio: 1; border-radius: 9px; display: flex; align-items: center; justify-content: center;
     font-family: 'Fredoka', sans-serif; font-weight: 700; color: #fff;
     font-size: clamp(17px, 5.8vw, 27px); line-height: 1;
+    font-size: calc((100cqw - 50px) / 9.3 * 0.6);
     background: #0e0f26; border: 2px solid #23264f;
     box-shadow: inset 0 2px 3px rgba(0,0,0,0.45);
   }
@@ -149,9 +153,9 @@
   @keyframes sym-in { from { transform: scale(0) rotate(-40deg); } to { transform: scale(1) rotate(0); } }
 
   /* Status line + keyboard (letters used so far) */
-  .hint-line { font-size: 12.5px; font-weight: 600; color: var(--text-dim); line-height: 1.45; text-align: center; max-width: 420px; margin: 0 auto 14px; }
+  .hint-line { font-size: 12.5px; font-weight: 600; color: var(--text-dim); line-height: 1.45; text-align: center; max-width: var(--board-w); margin: 0 auto 14px; }
   .hint-line strong { color: #fff; }
-  .tried { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: 420px; margin: 0 auto 16px; }
+  .tried { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: var(--board-w); margin: 0 auto 16px; }
   .tried span {
     width: 20px; height: 22px; display: flex; align-items: center; justify-content: center;
     border-radius: 6px; font-size: 11px; font-weight: 800; color: var(--text-faint); background: #0e0f26;
@@ -159,10 +163,10 @@
   .tried span.on { color: #fff; background: var(--panel-3); }
 
   /* End-of-round result */
-  .result { max-width: 420px; margin: 16px auto 0; text-align: center; animation: fadein 0.25s ease; }
+  .result { max-width: var(--board-w); margin: 16px auto 0; text-align: center; animation: fadein 0.25s ease; }
   .result[hidden] { display: none; }
   .answer-tiles { display: flex; justify-content: center; gap: 6px; margin-bottom: 8px; }
-  .answer-tiles .tile { width: 40px; aspect-ratio: 1; border-color: var(--gold); background: color-mix(in srgb, var(--gold) 16%, #14163a); color: var(--gold); font-size: 22px; }
+  .answer-tiles .tile { width: clamp(40px, 9vw, 60px); aspect-ratio: 1; border-color: var(--gold); background: color-mix(in srgb, var(--gold) 16%, #14163a); color: var(--gold); font-size: clamp(22px, 5vw, 32px); }
   .result .winner { font-size: 16px; font-weight: 800; color: var(--mint); font-family: 'Fredoka', sans-serif; }
   .result .nowinner { font-size: 14px; font-weight: 700; color: var(--text-dim); }
   .legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
@@ -182,7 +186,7 @@
   .rules-body p { margin: 0 0 10px; color: var(--text-dim); font-weight: 600; }
   .rules-body p strong { color: #fff; }
   .rules-demo { max-width: 340px; margin: 6px auto 14px; }
-  .rules-demo .grow { grid-template-columns: repeat(5, 1fr) 4px repeat(5, 0.9fr); }
+  .rules-demo .grow { grid-template-columns: repeat(5, 1fr) 10px repeat(5, 0.9fr); }
   .rules-demo .tile { font-size: 20px; }
   .rules-demo .sl { text-align: center; font-size: 12px; font-weight: 800; color: var(--text-faint); }
   .rules-demo .cap { grid-column: 1 / 7; font-size: 11px; font-weight: 700; color: var(--text-faint); text-align: right; padding-right: 6px; }
@@ -548,6 +552,12 @@
     return 'M' + pts.join('L') + 'ZM32 20.5A9.5 9.5 0 1 0 32.01 20.5Z';
   })();
 
+  const MUSH_CAP = 'M5.5 33C5.5 17 17.5 6 32 6C46.5 6 58.5 17 58.5 33C58.5 35.2 56.8 36.5 54.8 36.5H9.2C7.2 36.5 5.5 35.2 5.5 33Z';
+  const GHOST = roundPoly([
+    ...Array.from({ length: 19 }, (_, i) => { const t = Math.PI + (i * Math.PI) / 18; return [32 + Math.cos(t) * 22, 28 + Math.sin(t) * 22]; }),
+    [54, 52], [43, 45], [32, 52], [21, 45], [10, 52],
+  ], 4.4);
+
   // hue/tone/shape live in the engine (contrast rules); color/art live here.
   const SYMBOLS = {
     heart: {
@@ -622,6 +632,46 @@
     },
   };
 
+  Object.assign(SYMBOLS, {
+    frog: {
+      color: '#6bd83c', shadow: 24, deep: '#1f6a3a',
+      shape: (a) => `<ellipse cx="32" cy="37" rx="25.5" ry="17" ${a}/><circle cx="19.5" cy="20" r="10.5" ${a}/><circle cx="44.5" cy="20" r="10.5" ${a}/>`,
+      decor:
+        `<ellipse cx="32" cy="45.5" rx="14.5" ry="7.5" fill="#fff" opacity=".2"/>` +
+        [19.5, 44.5].map((x) => `<circle cx="${x}" cy="20" r="7.2" fill="#fff" stroke="#b9e3a3" stroke-width=".9"/><circle cx="${x + 0.9}" cy="21" r="4.1" fill="${INK}"/><circle cx="${x + 2.3}" cy="19.4" r="1.5" fill="#fff"/><circle cx="${x - 0.6}" cy="22.6" r=".7" fill="#fff" opacity=".85"/>`).join(''),
+      hl: shine(11, 36, 2.3, 5, 14, [13.5, 29, 1.3]),
+      face:
+        `<ellipse cx="14.5" cy="42" rx="3.6" ry="2.2" fill="#ff5f86" opacity=".8"/><ellipse cx="49.5" cy="42" rx="3.6" ry="2.2" fill="#ff5f86" opacity=".8"/>` +
+        `<circle cx="29.6" cy="34.2" r=".95" fill="${INK}"/><circle cx="34.4" cy="34.2" r=".95" fill="${INK}"/>` +
+        `<path d="M23 40Q32 47.5 41 40" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>`,
+    },
+    mushroom: {
+      color: '#ff4b3e', shadow: 22, base: '#fff4de', deep: '#e0905f', shadeOp: 0.42, icing: true,
+      shape: (a) => `<path d="${MUSH_CAP}" ${a}/><rect x="19" y="33" width="26" height="22" rx="10" ${a}/>`,
+      decor:
+        `<path d="M20 36.5H44Q32 44 20 36.5Z" fill="${SHADOW_TINT}" opacity=".24"/>` +
+        `<path d="${MUSH_CAP}" fill="url(#ic-mushroom)" stroke="#8e1d3a" stroke-width="3" stroke-linejoin="round"/>` +
+        `<path d="${MUSH_CAP}" fill="url(#sh)" opacity=".9"/>` +
+        [[18.5, 22, 4.6], [33, 13.5, 3.6], [46, 22.5, 5], [31, 27, 2.8]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" opacity=".96"/>`).join(''),
+      hl: shine(15, 15.5, 5.4, 2.5, -40, [25, 10.5, 1.4]),
+      face: face(32, 46, { gap: 10.5, rx: 2.2, ry: 2.9, mouthDy: 4.6, blushDx: 3.6, blushDy: 3, blush: '#ff8f9c' }),
+    },
+    ghost: {
+      color: '#dc5ef2', shadow: 23,
+      shape: (a) => `<path d="${GHOST}" ${a}/>`,
+      hl: shine(20, 17, 5.8, 2.8, -36, [29.5, 11, 1.5]),
+      face: face(32, 28, { gap: 14, mouth: 'o', mouthDy: 6.8, blush: '#ff7ac8', blushDx: 6.4 }),
+    },
+    // Safety net: if the server ever sends a symbol this page has no art for,
+    // show this instead of nothing at all.
+    _fallback: {
+      color: '#9aa3ff', shadow: 22,
+      shape: (a) => `<circle cx="32" cy="32" r="23" ${a}/>`,
+      hl: shine(20, 20, 6, 3, -35, [29, 13, 1.5]),
+      face: face(32, 32, { gap: 13, mouth: 'o', mouthDy: 6 }),
+    },
+  });
+
   function buildSymbolSprite() {
     const defs = `
       <linearGradient id="sh" gradientUnits="userSpaceOnUse" x1="0" y1="26" x2="0" y2="58">
@@ -644,7 +694,7 @@
         <ellipse cx="32" cy="58.6" rx="${s.shadow}" ry="3.7" fill="url(#gs)"/>
         <g transform="translate(0 3.3)">${s.shape(`fill="${deep}" stroke="${deep}" stroke-width="2.6" stroke-linejoin="round"`)}</g>
         ${s.shape(`fill="${rim}" stroke="${rim}" stroke-width="2.6" stroke-linejoin="round"`)}
-        <g clip-path="url(#cp-${id})"><rect width="64" height="64" fill="url(#gb-${id})"/><rect width="64" height="64" fill="url(#sh)"/></g>
+        <g clip-path="url(#cp-${id})"><rect width="64" height="64" fill="url(#gb-${id})"/><rect width="64" height="64" fill="url(#sh)" opacity="${s.shadeOp ?? 1}"/></g>
         ${s.decor || ''}${s.hl}${s.face}
       </symbol>`;
     }).join('');
@@ -653,8 +703,13 @@
   }
   buildSymbolSprite();
 
+  const warnedSymbols = new Set();
   function symbolSvg(id) {
-    if (!SYMBOLS[id]) return '';
+    if (!id) return '';
+    if (!SYMBOLS[id]) {
+      if (!warnedSymbols.has(id)) { warnedSymbols.add(id); console.warn('[Symble] No artwork for symbol "' + id + '" - showing a placeholder. Is this page out of date?'); }
+      id = '_fallback';
+    }
     return `<svg viewBox="0 0 64 64" aria-hidden="true"><use href="#sym-${id}"/></svg>`;
   }
 
@@ -681,6 +736,8 @@
   // ---- Connection status ----
   socket.on('server:config', (cfg) => {
     if (cfg.defaultUsername) $('tiktokUsername').value = cfg.defaultUsername;
+    const missing = (cfg.symbols || []).filter((id) => !SYMBOLS[id]);
+    if (missing.length) console.warn('[Symble] This page has no artwork for: ' + missing.join(', ') + ' - it is out of date. Replace public/index.html with the newest version.');
   });
   socket.on('tiktok:status', (payload) => {
     const st = ['connected', 'connecting', 'error'].includes(payload.state) ? payload.state : '';
@@ -695,6 +752,10 @@
   // ---------------------------------------------------------------------
   // Board
   // ---------------------------------------------------------------------
+  function scrollToLatest() {
+    const m = document.querySelector('main');
+    requestAnimationFrame(() => m.scrollTo({ top: m.scrollHeight, behavior: 'smooth' }));
+  }
   let lastGridSig = '';
   let lastGridRound = null;
   let lastRowCount = 0;
@@ -713,6 +774,7 @@
     lastGridSig = sig;
 
     // Only animate rows that appeared since the last render of this same round.
+    const firstRender = lastGridRound === null;
     const sameRound = lastGridRound === state.roundNumber;
     const prevCount = sameRound ? lastRowCount : rows.length;
     lastGridRound = state.roundNumber;
@@ -738,9 +800,10 @@
         tiles += `<div class="${cls}" style="${style}">${ch}</div>`;
         syms += `<div class="sym" style="--i:${i}">${symbolSvg(row.symbols[i])}</div>`;
       }
-      html += `<div class="grow${isNew ? ' new' : ''}">${tiles}<div class="gdiv"></div>${syms}</div>`;
+      html += `<div class="grow${isNew ? ' new' : ''}">${tiles}<div class="gspace"></div>${syms}</div>`;
     }
     gridEl.innerHTML = html;
+    if (rows.length > prevCount || (firstRender && rows.length)) scrollToLatest();
   }
 
   function renderTried(state) {
@@ -782,6 +845,7 @@
     ).join('');
 
     if (state.winner && confettiRound !== state.roundNumber) burstConfetti();
+    if (confettiRound !== state.roundNumber) scrollToLatest();
     confettiRound = state.roundNumber;
   }
 
@@ -863,7 +927,7 @@
     const secret = 'SHAKE';
     const syms = ['cloud', 'clover', 'cloud', 'heart', 'cloud'];
     $('rulesDemo').innerHTML =
-      `<div class="grow">${guess.split('').map((ch) => `<div class="tile filled">${ch}</div>`).join('')}<div class="gdiv"></div>${syms.map((s) => `<div class="sym">${symbolSvg(s)}</div>`).join('')}</div>` +
+      `<div class="grow">${guess.split('').map((ch) => `<div class="tile filled">${ch}</div>`).join('')}<div class="gspace"></div>${syms.map((s) => `<div class="sym">${symbolSvg(s)}</div>`).join('')}</div>` +
       `<div class="grow" style="margin-top:6px"><div class="cap">the secret word, hidden in the real game</div>${secret.split('').map((ch) => `<div class="sl">${ch}</div>`).join('')}</div>`;
     $('rulesKey').innerHTML = ['Right spot: that letter is in your guess, in the same position', 'Wrong spot: that letter is in your guess, but somewhere else', 'Not in your guess: that letter (or a spare copy of it) isn\'t in your guess']
       .map((t) => `<div><span class="q">?</span><span>${t}</span></div>`).join('');

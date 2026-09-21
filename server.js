@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { TikTokLiveConnection, WebcastEvent, ControlEvent } from 'tiktok-live-connector';
-import { GameEngine } from './gameEngine.js';
+import { GameEngine, SYMBOL_POOL } from './gameEngine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -43,6 +43,33 @@ const DEFAULT_TIKTOK_USERNAME = process.env.DEFAULT_TIKTOK_USERNAME || '';
 const ENV_SIGN_API_KEY = process.env.SIGN_API_KEY || '';
 
 const app = express();
+
+// ---------------------------------------------------------------------------
+// Which page to show. The game page is normally public/index.html, but it's easy
+// to upload a new copy next to server.js by accident and leave the OLD one in
+// public/ (the old page then shows stale things like "undefined" and missing
+// symbols). Each page carries a <meta name="symble-build"> number, and the
+// server simply serves whichever copy is newest - so that mistake can't bite.
+// ---------------------------------------------------------------------------
+const PAGE_FILES = [path.join(__dirname, 'public', 'index.html'), path.join(__dirname, 'index.html')];
+function pageBuild(file) {
+  try {
+    const m = fs.readFileSync(file, 'utf-8').match(/name=["']symble-build["']\s+content=["'](\d+)["']/);
+    return m ? Number(m[1]) : 0; // pages from before this feature count as build 0
+  } catch {
+    return -1; // file doesn't exist
+  }
+}
+const pageBuilds = PAGE_FILES.map((f) => ({ file: f, build: pageBuild(f) })).filter((p) => p.build >= 0);
+const PAGE = pageBuilds.reduce((best, p) => (!best || p.build > best.build ? p : best), null);
+if (PAGE) {
+  console.log(`[PAGE] Serving ${path.relative(__dirname, PAGE.file)} (build ${PAGE.build})`);
+  const stale = pageBuilds.filter((p) => p !== PAGE);
+  if (stale.length) console.warn(`[PAGE] Ignoring older copy: ${stale.map((p) => `${path.relative(__dirname, p.file)} (build ${p.build})`).join(', ')}. You can delete it.`);
+} else {
+  console.error('[PAGE] Could not find public/index.html!');
+}
+app.get(['/', '/index.html'], (req, res, next) => (PAGE ? res.sendFile(PAGE.file) : next()));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/healthz', (req, res) => res.status(200).send('ok')); // Render health check
 
@@ -279,6 +306,7 @@ io.on('connection', (socket) => {
   socket.emit('server:config', {
     defaultUsername: DEFAULT_TIKTOK_USERNAME,
     hasEnvSignKey: Boolean(ENV_SIGN_API_KEY),
+    symbols: SYMBOL_POOL,
   });
 
   socket.on('host:connectTikTok', safe('socket:connectTikTok', ({ username, signApiKey } = {}) => {

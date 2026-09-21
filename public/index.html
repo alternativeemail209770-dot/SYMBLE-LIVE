@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="symble-build" content="4" />
 <title>Symble Live</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,6 +28,7 @@
     --radius-md: 16px;
     --radius-sm: 11px;
     --vh: 1vh;
+    --board-w: 640px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -86,21 +88,22 @@
   /* ---------------- Main ---------------- */
   main {
     flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 14px 14px 20px; display: flex; flex-direction: column; gap: 14px;
+    padding: 10px 10px 18px; display: flex; flex-direction: column; gap: 10px;
   }
 
   /* ---------------- Board ---------------- */
   .board {
     background: linear-gradient(160deg, var(--panel) 0%, var(--panel-2) 100%);
     border-radius: var(--radius-lg);
-    padding: 16px 14px 18px;
+    padding: 14px 12px 18px;
+    flex: 1 0 auto;
     border: 1px solid var(--line);
     position: relative;
     box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   }
   .board .meta-row {
     display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    margin: 0 auto 12px; max-width: 420px;
+    margin: 0 auto 12px; max-width: var(--board-w);
   }
   .round-chip {
     display: inline-flex; align-items: center; gap: 7px;
@@ -109,26 +112,27 @@
     padding: 6px 12px; border-radius: 999px;
   }
   .round-chip .sub { color: var(--text-dim); font-weight: 700; }
-  .points-badge {
+  .guess-badge {
     display: inline-flex; align-items: center; gap: 5px;
     font-size: 12.5px; color: #1a1c1a; font-weight: 800;
     background: linear-gradient(160deg, #ffe27a, var(--gold));
     padding: 5px 12px; border-radius: 999px;
     box-shadow: 0 4px 10px rgba(255,203,71,0.3);
   }
-  .points-badge[hidden] { display: none; }
+  .guess-badge[hidden] { display: none; }
 
   /* The guess grid: 5 letter tiles | divider | 5 symbols */
-  .grid { display: grid; row-gap: 6px; max-width: 420px; margin: 0 auto; }
+  .grid { container-type: inline-size; width: 100%; display: grid; row-gap: 6px; max-width: var(--board-w); margin: 0 auto; }
   .grow {
-    display: grid; grid-template-columns: repeat(5, 1fr) 4px repeat(5, 0.62fr);
-    column-gap: 5px; align-items: center;
+    display: grid; grid-template-columns: repeat(5, 1fr) 10px repeat(5, 0.86fr);
+    column-gap: 4px; align-items: center;
   }
-  .gdiv { align-self: stretch; margin: -3px 0; background: #e9e9fa; border-radius: 2px; opacity: 0.85; }
+  .gspace { min-width: 0; } /* empty gap between the letters and the symbols - no line */
   .tile {
     aspect-ratio: 1; border-radius: 9px; display: flex; align-items: center; justify-content: center;
     font-family: 'Fredoka', sans-serif; font-weight: 700; color: #fff;
-    font-size: clamp(19px, 6.4vw, 27px); line-height: 1;
+    font-size: clamp(17px, 5.8vw, 27px); line-height: 1;
+    font-size: calc((100cqw - 50px) / 9.3 * 0.6);
     background: #0e0f26; border: 2px solid #23264f;
     box-shadow: inset 0 2px 3px rgba(0,0,0,0.45);
   }
@@ -144,38 +148,14 @@
   @keyframes tile-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   .sym { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
   .sym:empty::before { content: ''; width: 26%; aspect-ratio: 1; border-radius: 50%; background: #23264f; }
-  .sym svg { width: 80%; height: 80%; overflow: visible; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+  .sym svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 3px 3px rgba(0,0,0,0.45)); }
   .grow.new .sym svg { animation: sym-in 0.4s cubic-bezier(.34,1.56,.64,1) both; animation-delay: calc(400ms + var(--i) * 70ms); }
   @keyframes sym-in { from { transform: scale(0) rotate(-40deg); } to { transform: scale(1) rotate(0); } }
 
-  /* Timer + crowd votes */
-  .timer-wrap {
-    margin: 16px auto 0; max-width: 420px; height: 10px; border-radius: 999px; background: #0e0f26;
-    overflow: hidden; border: 1px solid var(--line);
-  }
-  .timer-bar {
-    height: 100%; border-radius: 999px; width: 0; transition: width 0.25s linear;
-    background: linear-gradient(90deg, var(--mint), var(--gold));
-  }
-  .timer-bar.low { background: linear-gradient(90deg, var(--danger), #ff9e5f); }
-  .clock-row {
-    display: flex; justify-content: space-between; gap: 8px; max-width: 420px; margin: 7px auto 0;
-    font-size: 12px; font-weight: 700; color: var(--text-dim);
-  }
-  .votes { max-width: 420px; margin: 12px auto 0; }
-  .votes-head { font-size: 12.5px; font-weight: 800; color: var(--text-dim); margin-bottom: 6px; }
-  .vote-row {
-    position: relative; display: flex; justify-content: space-between; align-items: center;
-    padding: 6px 10px; margin-bottom: 4px; border-radius: 10px; overflow: hidden;
-    background: #0e0f26; border: 1px solid var(--line);
-    font-family: 'Fredoka', sans-serif; font-weight: 600; letter-spacing: 1.5px; font-size: 14px;
-  }
-  .vote-row .fill { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--mint) 24%, transparent); transition: width 0.3s ease; }
-  .vote-row span { position: relative; }
-  .vote-row .n { font-family: 'Nunito', sans-serif; letter-spacing: 0; color: var(--mint); font-weight: 800; font-size: 12.5px; }
-  .hint-line { font-size: 12.5px; font-weight: 600; color: var(--text-dim); line-height: 1.45; }
+  /* Status line + keyboard (letters used so far) */
+  .hint-line { font-size: 12.5px; font-weight: 600; color: var(--text-dim); line-height: 1.45; text-align: center; max-width: var(--board-w); margin: 0 auto 14px; }
   .hint-line strong { color: #fff; }
-  .tried { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: 420px; margin: 12px auto 0; }
+  .tried { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: var(--board-w); margin: 0 auto 16px; }
   .tried span {
     width: 20px; height: 22px; display: flex; align-items: center; justify-content: center;
     border-radius: 6px; font-size: 11px; font-weight: 800; color: var(--text-faint); background: #0e0f26;
@@ -183,19 +163,19 @@
   .tried span.on { color: #fff; background: var(--panel-3); }
 
   /* End-of-round result */
-  .result { max-width: 420px; margin: 16px auto 0; text-align: center; animation: fadein 0.25s ease; }
-  .result[hidden], .votes[hidden], .timer-wrap[hidden], .clock-row[hidden] { display: none; }
+  .result { max-width: var(--board-w); margin: 16px auto 0; text-align: center; animation: fadein 0.25s ease; }
+  .result[hidden] { display: none; }
   .answer-tiles { display: flex; justify-content: center; gap: 6px; margin-bottom: 8px; }
-  .answer-tiles .tile { width: 40px; aspect-ratio: 1; border-color: var(--gold); background: color-mix(in srgb, var(--gold) 16%, #14163a); color: var(--gold); font-size: 22px; }
+  .answer-tiles .tile { width: clamp(40px, 9vw, 60px); aspect-ratio: 1; border-color: var(--gold); background: color-mix(in srgb, var(--gold) 16%, #14163a); color: var(--gold); font-size: clamp(22px, 5vw, 32px); }
   .result .winner { font-size: 16px; font-weight: 800; color: var(--mint); font-family: 'Fredoka', sans-serif; }
   .result .nowinner { font-size: 14px; font-weight: 700; color: var(--text-dim); }
   .legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
   .legend .chip {
-    display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 7px;
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 6px;
     background: #0e0f26; border: 1px solid var(--line); border-radius: 999px;
     font-size: 12px; font-weight: 700; color: var(--text);
   }
-  .legend .chip svg { width: 18px; height: 18px; }
+  .legend .chip svg { width: 30px; height: 30px; overflow: visible; }
   .confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: var(--radius-lg); }
   .confetti span { position: absolute; top: -10%; opacity: 0.9; animation: confetti-fall 1.6s ease-in forwards; }
   @keyframes confetti-fall { to { transform: translateY(520px) rotate(200deg); opacity: 0; } }
@@ -206,60 +186,19 @@
   .rules-body p { margin: 0 0 10px; color: var(--text-dim); font-weight: 600; }
   .rules-body p strong { color: #fff; }
   .rules-demo { max-width: 340px; margin: 6px auto 14px; }
-  .rules-demo .grow { grid-template-columns: repeat(5, 1fr) 4px repeat(5, 0.7fr); }
+  .rules-demo .grow { grid-template-columns: repeat(5, 1fr) 10px repeat(5, 0.9fr); }
   .rules-demo .tile { font-size: 20px; }
   .rules-demo .sl { text-align: center; font-size: 12px; font-weight: 800; color: var(--text-faint); }
   .rules-demo .cap { grid-column: 1 / 7; font-size: 11px; font-weight: 700; color: var(--text-faint); text-align: right; padding-right: 6px; }
   .rules-key { display: grid; gap: 6px; margin: 4px 0 12px; }
   .rules-key div { display: flex; gap: 10px; align-items: center; font-size: 13px; font-weight: 700; color: var(--text); }
-  .rules-key svg { width: 22px; height: 22px; flex: 0 0 auto; }
-
-  .set-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  .rules-key svg { width: 30px; height: 30px; flex: 0 0 auto; overflow: visible; }
 
   @media (prefers-reduced-motion: reduce) {
     .tile.flip, .grow.new .tile, .grow.new .sym svg, .confetti span, .result { animation: none !important; }
     .tile.flip { border-color: var(--to-border); background: var(--to-bg); }
   }
   :focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
-
-  /* ---------------- Columns (leaderboard / chat) ---------------- */
-  .columns { display: flex; gap: 12px; flex: 1 1 auto; min-height: 230px; }
-  .panel {
-    background: var(--panel); border-radius: var(--radius-lg); border: 1px solid var(--line);
-    display: flex; flex-direction: column; overflow: hidden; flex: 1 1 0;
-    box-shadow: 0 8px 22px rgba(0,0,0,0.22);
-  }
-  .panel h2 {
-    font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); font-weight: 800;
-    margin: 0; padding: 12px 13px; border-bottom: 1px solid var(--line); flex: 0 0 auto;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .panel .body { overflow-y: auto; padding: 8px 9px; flex: 1 1 auto; }
-
-  .lb-row { display: flex; align-items: center; gap: 8px; padding: 7px 4px; font-size: 13px; border-bottom: 1px solid #23254a; }
-  .lb-rank {
-    width: 22px; height: 22px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 800; color: var(--text-faint);
-  }
-  .lb-row.top1 .lb-rank, .lb-row.top2 .lb-rank, .lb-row.top3 .lb-rank { font-size: 16px; }
-  .lb-avatar {
-    width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10.5px; font-weight: 800; color: #12132a;
-    box-shadow: inset 0 -2px 3px rgba(0,0,0,0.2), inset 0 2px 2px rgba(255,255,255,0.35);
-  }
-  .lb-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
-  .lb-score { font-weight: 800; color: var(--gold); font-size: 12.5px; }
-  .empty-note { color: var(--text-faint); font-size: 12px; padding: 14px 6px; text-align: center; font-weight: 600; }
-
-  .chat-row { font-size: 12.5px; padding: 5px 6px; word-break: break-word; border-radius: 9px; margin-bottom: 2px; }
-  .chat-row .u { color: var(--mint); font-weight: 800; }
-  .chat-row.correct { background: rgba(53,230,171,0.13); }
-  .chat-row .tag {
-    font-size: 9.5px; color: #12132a; margin-left: 4px; background: var(--gold); font-weight: 800;
-    padding: 1px 6px; border-radius: 999px;
-  }
-  .chat-row .src { font-size: 9.5px; color: var(--text-faint); margin-left: 4px; }
 
   /* ---------------- Footer / Settings trigger ---------------- */
   footer { flex: 0 0 auto; }
@@ -341,16 +280,12 @@
   .section-title { font-size: 12.5px; font-weight: 800; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; margin: 14px 0 8px; }
   .section-title:first-child { margin-top: 2px; }
 
-  /* Diagnostics inside Status tab */
-  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-top: 6px; }
-  .diag-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; }
-  .diag-card .k { color: var(--text-faint); font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
-  .diag-card .v { color: var(--text); font-weight: 800; font-size: 13px; word-break: break-word; margin-top: 2px; }
-  .diag-log { margin-top: 12px; max-height: 100px; overflow-y: auto; border-top: 1px solid var(--line); padding-top: 8px; font-size: 11.5px; color: var(--text-dim); }
-  .diag-log div { border-bottom: 1px solid #23254a; padding: 3px 0; }
+  /* Connection message under the Connect buttons */
+  .conn-status { margin-top: 12px; padding: 9px 11px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 700; color: var(--text-dim); line-height: 1.4; }
+  .conn-status.connected { color: var(--mint); border-color: rgba(53,230,171,0.4); }
+  .conn-status.connecting { color: var(--gold); border-color: rgba(255,203,71,0.4); }
+  .conn-status.error { color: var(--danger); border-color: rgba(255,95,109,0.45); }
 
-  .chat-row .tag.vote { background: var(--mint); }
-  .chat-row .tag.rej { background: var(--panel-3); color: var(--text-dim); }
   .rules-key .q {
     width: 22px; height: 22px; flex: 0 0 auto; border-radius: 50%; background: var(--panel-3);
     border: 1px solid var(--line); color: var(--text-dim); font-weight: 800; font-size: 12px;
@@ -380,38 +315,19 @@
 
       <div class="meta-row">
         <span class="round-chip"><span id="roundLabel">Symble</span><span class="sub" id="roundSub"></span></span>
-        <span class="points-badge" id="pointsBadge" hidden>✨ <span></span></span>
+        <span class="guess-badge" id="guessBadge" hidden><span></span></span>
       </div>
+
+      <div class="tried" id="tried" title="Keyboard — letters used in guesses so far"></div>
+      <div class="hint-line" id="hintLine"></div>
 
       <div class="grid" id="grid"></div>
-
-      <div class="timer-wrap" id="timerWrap" hidden><div class="timer-bar" id="timerBar"></div></div>
-      <div class="clock-row" id="clockRow" hidden><span id="clockLeft"></span><span id="clockRight"></span></div>
-
-      <div class="votes" id="votes">
-        <div class="votes-head" id="votesHead"></div>
-        <div id="voteList"></div>
-        <div class="hint-line" id="hintLine"></div>
-      </div>
 
       <div class="result" id="result" hidden>
         <div class="answer-tiles" id="answerTiles"></div>
         <div class="winner" id="resultWinner" hidden></div>
         <div class="nowinner" id="resultNoWinner" hidden></div>
         <div class="legend" id="legend"></div>
-      </div>
-
-      <div class="tried" id="tried" title="Letters used in guesses so far"></div>
-    </section>
-
-    <section class="columns">
-      <div class="panel">
-        <h2>🏆 Top 10</h2>
-        <div class="body" id="leaderboardBody"><div class="empty-note">No scores yet — be the first!</div></div>
-      </div>
-      <div class="panel">
-        <h2>💬 Live Chat</h2>
-        <div class="body" id="chatBody"><div class="empty-note">Chat messages will appear here.</div></div>
       </div>
     </section>
 
@@ -430,14 +346,14 @@
     </div>
     <div class="tab-scroll">
       <div class="rules-body">
-        <p>Guess the secret <strong>5-letter word</strong>. Each round uses <strong>3 random symbols</strong>, and each one secretly means something different. You have to work out which is which.</p>
+        <p>Guess the secret <strong>5-letter word</strong>. Each round uses <strong>3 random symbols</strong> that always look very different from each other, and each one secretly means something different. You have to work out which is which.</p>
         <div class="rules-key" id="rulesKey"></div>
         <p>Here's the twist: the symbols line up with the letters of the <strong>secret word</strong>, not with the letters you guessed. Symbol 1 is about the secret word's 1st letter, symbol 2 about its 2nd letter, and so on.</p>
         <p><strong>Example:</strong> the secret word is SHAKE and the guess is THICK.</p>
         <div class="rules-demo" id="rulesDemo"></div>
         <p>The 2nd symbol says the secret's <strong>H</strong> is in your guess in the right spot. The 4th says the secret's <strong>K</strong> is in your guess but in the wrong spot. The other three say S, A and E aren't in THICK at all.</p>
         <p><strong>Repeated letters:</strong> if you guess only one copy of a doubled letter and put it in the wrong spot, the <em>first</em> matching letter of the secret word gets the "wrong spot" symbol. If it's in the right spot, only that one gets "right spot" and you learn nothing about the other copy.</p>
-        <p><strong>Playing in chat:</strong> type any 5-letter word to vote for the next row. When the timer runs out, the most-voted word is locked in. Anyone who types the secret word wins the round straight away, and the sooner the better.</p>
+        <p><strong>Playing in chat:</strong> type any 5-letter word. If it's valid and nobody's guessed it yet this round, it goes straight onto the board with its symbols — no vote, no waiting. Anyone who types the secret word wins the round straight away, and there's no timer or limit on how many guesses the board can hold, so keep trying!</p>
         <p>When the round ends, the tiles flip to show their colours, and the symbols' meanings are revealed.</p>
       </div>
     </div>
@@ -455,7 +371,7 @@
       <button class="tab-btn" data-tab="game">Game</button>
       <button class="tab-btn" data-tab="message">Message</button>
       <button class="tab-btn" data-tab="words">Add Word</button>
-      <button class="tab-btn" data-tab="status">Status</button>
+      <button class="tab-btn" data-tab="test">Test</button>
     </div>
 
     <div class="tab-scroll">
@@ -470,6 +386,7 @@
           <button class="primary" id="connectBtn">Connect to LIVE</button>
           <button class="secondary danger" id="disconnectBtn">Disconnect</button>
         </div>
+        <div class="conn-status" id="connStatus">Not connected.</div>
         <div class="small-note">Get a free key at eulerstream.com. Your stream must be LIVE before connecting. This panel is open to anyone with the page link — there's no host password.</div>
       </div>
 
@@ -479,20 +396,11 @@
           <button class="primary" id="startGameBtn">▶ Start Game</button>
           <button class="secondary" id="stopGameBtn">■ Stop Game</button>
         </div>
-        <button class="secondary" id="skipRoundBtn">⏭ Skip Round</button>
-
-        <div class="section-title">Pacing</div>
-        <div class="set-grid">
-          <div><label for="setTurn">Seconds per row</label><input type="number" id="setTurn" min="8" max="90" /></div>
-          <div><label for="setFinal">Last-chance seconds</label><input type="number" id="setFinal" min="5" max="60" /></div>
-          <div><label for="setRows">Rows on the board</label><input type="number" id="setRows" min="5" max="10" /></div>
-          <div><label for="setRound">Max round seconds</label><input type="number" id="setRound" min="60" max="900" /></div>
+        <div class="row">
+          <button class="secondary" id="revealAnswerBtn">👁 Reveal Answer</button>
+          <button class="secondary" id="skipRoundBtn">⏭ Skip Round</button>
         </div>
-        <button class="secondary" id="saveSettingsBtn">Save pacing</button>
-        <div class="small-note" id="settingsNote">The number of rows applies from the next round; the timers apply straight away.</div>
-
-        <div class="section-title">Leaderboard</div>
-        <button class="secondary danger" id="resetLbBtn">Reset Leaderboard</button>
+        <div class="small-note">There's no timer and no limit on guesses — a round runs until someone solves it, or you reveal the answer or skip it here.</div>
       </div>
 
       <div class="tab-content" data-tab="message">
@@ -502,7 +410,7 @@
         <label>Message / Guess</label>
         <input type="text" id="hostMsgText" placeholder="Type a 5-letter word..." />
         <button class="primary" id="sendHostMsgBtn">Send</button>
-        <div class="small-note">This feeds directly into the game, just like a real TikTok comment: a valid 5-letter word is a vote for the next row, and the secret word wins the round.</div>
+        <div class="small-note">This feeds directly into the game, just like a real TikTok comment: a fresh, valid 5-letter word goes straight onto the board, and the secret word wins the round.</div>
       </div>
 
       <div class="tab-content" data-tab="words">
@@ -514,26 +422,18 @@
         <div class="small-note" id="wordBankNote"></div>
       </div>
 
-      <div class="tab-content" data-tab="status">
+      <div class="tab-content" data-tab="test">
         <div class="section-title">Test mode</div>
         <div class="toggle-row">
           <div>
             <div class="lbl">Simulate fake TikTok chat</div>
-            <div class="sub">Fake viewers vote for words (and sometimes solve it) every ~1.2s</div>
+            <div class="sub">Fake viewers guess words (and sometimes solve it) every ~1.2s</div>
           </div>
           <label class="switch">
             <input type="checkbox" id="testModeToggle" />
             <span class="slider"></span>
           </label>
         </div>
-
-        <div class="section-title">Diagnostics</div>
-        <div class="diag-grid">
-          <div class="diag-card"><div class="k">Connection</div><div class="v" id="diagConn">disconnected</div></div>
-          <div class="diag-card"><div class="k">Raw events</div><div class="v" id="diagRawCount">0</div></div>
-          <div class="diag-card" style="grid-column:1/-1;"><div class="k">Last received</div><div class="v" id="diagLast">—</div></div>
-        </div>
-        <div class="diag-log" id="diagLog"></div>
       </div>
 
     </div>
@@ -557,29 +457,265 @@
   const socket = io();
   const $ = (id) => document.getElementById(id);
 
-  // ---- The symbol set (ids must match SYMBOL_POOL in gameEngine.js) ----
-  const SYMBOLS = {
-    heart:    { color: '#ffd21f', body: '<path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>' },
-    drop:     { color: '#3b82ff', body: '<path d="M12 2.5c3.3 4.3 6.2 7.7 6.2 11.2a6.2 6.2 0 0 1-12.4 0c0-3.5 2.9-6.9 6.2-11.2z"/>' },
-    sun:      { color: '#ff4d4d', body: '<circle cx="12" cy="12" r="4.6"/><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>' },
-    infinity: { color: '#39f078', body: '<circle cx="7.3" cy="12" r="4.4" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="16.7" cy="12" r="4.4" fill="none" stroke="currentColor" stroke-width="2.6"/>' },
-    star:     { color: '#ff9d2e', body: '<polygon points="12,2 14.9,8.6 22,9.3 16.6,14 18.2,21 12,17.3 5.8,21 7.4,14 2,9.3 9.1,8.6"/>' },
-    diamond:  { color: '#2ee6e6', body: '<polygon points="12,2 22,12 12,22 2,12"/>' },
-    moon:     { color: '#b58cff', body: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' },
-    bolt:     { color: '#ff5fd2', body: '<polygon points="13,2 4,14 11,14 10,22 20,9 13,9"/>' },
-    plus:     { color: '#f2f2fa', body: '<path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/>' },
-    triangle: { color: '#d2a679', body: '<polygon points="12,3 22,21 2,21"/>' },
+  // ---- The symbol set --------------------------------------------------
+  // ids must match SYMBOL_INFO in gameEngine.js. Each symbol is drawn once as an
+  // SVG <symbol> (see buildSymbolSprite) and every board cell just points at it.
+  // Look: chunky "plush toy" - thick extruded base, dark contour, glossy gradient
+  // body lit from the top-left, tinted shading, a shine, a ground shadow and a face.
+  const INK = '#3a1d4d';
+  const SHADOW_TINT = '#2a0d4a';
+
+  const hex2rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const mix = (a, b, t) => {
+    const A = hex2rgb(a), B = hex2rgb(b);
+    return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('');
   };
+  const fx = (n) => Math.round(n * 100) / 100;
+
+  /** Closed polygon with rounded corners (quadratic curves). */
+  function roundPoly(pts, r) {
+    const n = pts.length;
+    let d = '';
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i + n - 1) % n], p1 = pts[i], p2 = pts[(i + 1) % n];
+      const v1 = [p0[0] - p1[0], p0[1] - p1[1]], v2 = [p2[0] - p1[0], p2[1] - p1[1]];
+      const l1 = Math.hypot(v1[0], v1[1]), l2 = Math.hypot(v2[0], v2[1]);
+      const k = Math.min(r, l1 / 2, l2 / 2);
+      const a = [p1[0] + (v1[0] / l1) * k, p1[1] + (v1[1] / l1) * k];
+      const b = [p1[0] + (v2[0] / l2) * k, p1[1] + (v2[1] / l2) * k];
+      d += `${i ? 'L' : 'M'}${fx(a[0])} ${fx(a[1])}Q${fx(p1[0])} ${fx(p1[1])} ${fx(b[0])} ${fx(b[1])}`;
+    }
+    return d + 'Z';
+  }
+
+  /** Rotate the points of an absolute M/C/Z path around (cx, cy). */
+  function rotatePath(cmds, deg, cx, cy) {
+    const t = (deg * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
+    const rot = ([x, y]) => [cx + (x - cx) * c - (y - cy) * s, cy + (x - cx) * s + (y - cy) * c];
+    return cmds.map(([op, ...pts]) => op + pts.map((p) => rot(p).map(fx).join(' ')).join(' ')).join('') + 'Z';
+  }
+
+  /** A face: blush, eyes, mouth. eyes: 'dot' | 'happy' | 'sleep'. */
+  function face(cx, cy, o = {}) {
+    const gap = o.gap ?? 13;
+    const rx = o.rx ?? 2.8, ry = o.ry ?? 3.6;
+    const x1 = cx - gap / 2, x2 = cx + gap / 2;
+    const eyeKind = o.eyes || 'dot';
+    const eye = (x) => {
+      if (eyeKind === 'happy') return `<path d="M${fx(x - 3.2)} ${fx(cy + 1.6)}Q${fx(x)} ${fx(cy - 4)} ${fx(x + 3.2)} ${fx(cy + 1.6)}" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>`;
+      if (eyeKind === 'sleep') return `<path d="M${fx(x - 3.2)} ${fx(cy - 1)}Q${fx(x)} ${fx(cy + 3.6)} ${fx(x + 3.2)} ${fx(cy - 1)}" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>`;
+      return `<ellipse cx="${fx(x)}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${INK}"/><circle cx="${fx(x + 0.95)}" cy="${fx(cy - 1.35)}" r="1.15" fill="#fff"/><circle cx="${fx(x - 0.9)}" cy="${fx(cy + 1.5)}" r=".55" fill="#fff" opacity=".85"/>`;
+    };
+    const my = cy + (o.mouthDy ?? 6.6);
+    let mouth;
+    if (o.mouth === 'open') {
+      mouth = `<path d="M${fx(cx - 3.4)} ${fx(my - 0.6)}Q${cx} ${fx(my + 6.4)} ${fx(cx + 3.4)} ${fx(my - 0.6)}Z" fill="${INK}" stroke="${INK}" stroke-width="1" stroke-linejoin="round"/><ellipse cx="${cx}" cy="${fx(my + 2.4)}" rx="1.9" ry="1.2" fill="#ff7f9d"/>`;
+    } else if (o.mouth === 'o') {
+      mouth = `<ellipse cx="${cx}" cy="${fx(my + 0.8)}" rx="1.9" ry="2.3" fill="${INK}"/>`;
+    } else if (o.mouth === 'cat') {
+      mouth = `<path d="M${fx(cx - 4.4)} ${fx(my)}Q${fx(cx - 2.2)} ${fx(my + 3.2)} ${cx} ${fx(my)}Q${fx(cx + 2.2)} ${fx(my + 3.2)} ${fx(cx + 4.4)} ${fx(my)}" fill="none" stroke="${INK}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`;
+    } else {
+      mouth = `<path d="M${fx(cx - 3)} ${fx(my)}Q${cx} ${fx(my + 3.8)} ${fx(cx + 3)} ${fx(my)}" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"/>`;
+    }
+    const bx = gap / 2 + (o.blushDx ?? 6.6), by = cy + (o.blushDy ?? 4.4);
+    const bc = o.blush || '#ff6f9c';
+    const blush = `<ellipse cx="${fx(cx - bx)}" cy="${fx(by)}" rx="3.4" ry="2.1" fill="${bc}" opacity=".62"/><ellipse cx="${fx(cx + bx)}" cy="${fx(by)}" rx="3.4" ry="2.1" fill="${bc}" opacity=".62"/>`;
+    const inner = blush + eye(x1) + eye(x2) + mouth;
+    return o.rotate ? `<g transform="rotate(${o.rotate} ${cx} ${cy})">${inner}</g>` : inner;
+  }
+
+  const shine = (x, y, rx, ry, rot, dot) =>
+    `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" transform="rotate(${rot} ${x} ${y})" fill="#fff" opacity=".78"/>` +
+    (dot ? `<circle cx="${dot[0]}" cy="${dot[1]}" r="${dot[2] || 1.5}" fill="#fff" opacity=".9"/>` : '');
+
+  // --- silhouettes ---
+  const HEART = 'M32 54C10 40 5 28 5 19.5C5 11.5 11 6 18.5 6C24 6 29 9 32 14C35 9 40 6 45.5 6C53 6 59 11.5 59 19.5C59 28 54 40 32 54Z';
+  const DROP = 'M32 5C44 21 54 32 54 42.5A22 22 0 0 1 10 42.5C10 32 20 21 32 5Z';
+  const MOON = 'M56 34.1A24 24 0 1 1 29.9 8A18.7 18.7 0 0 0 56 34.1Z';
+  const STAR = roundPoly(
+    Array.from({ length: 10 }, (_, i) => {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5, r = i % 2 ? 13.5 : 26.5;
+      return [32 + Math.cos(a) * r, 34.5 + Math.sin(a) * r];
+    }), 4.6);
+  const GEM = roundPoly([[19, 9], [45, 9], [58, 24], [32, 56], [6, 24]], 4);
+  const LEAF = [['M', [32, 32]], ['C', [24, 26], [17, 20], [17, 13]], ['C', [17, 8], [21, 5], [25, 5]], ['C', [28, 5], [31, 7], [32, 10]], ['C', [33, 7], [36, 5], [39, 5]], ['C', [43, 5], [47, 8], [47, 13]], ['C', [47, 20], [40, 26], [32, 32]]];
+  const CLOVER = [0, 90, 180, 270].map((a) => rotatePath(LEAF, a, 32, 32));
+  const EAR_L = roundPoly([[8, 28], [10, 6], [29, 17]], 3.4);
+  const EAR_R = roundPoly([[56, 28], [54, 6], [35, 17]], 3.4);
+  const DONUT_RING = 'M32 4A26 26 0 1 1 31.99 4ZM32 23.5A6.5 6.5 0 1 0 32.01 23.5Z';
+  const ICING = (() => {
+    const cx = 32, cy = 30, pts = [];
+    for (let i = 0; i < 56; i++) {
+      const a = (i / 56) * Math.PI * 2, r = 22.2 + 1.7 * Math.sin(a * 8);
+      pts.push(`${fx(cx + Math.cos(a) * r)} ${fx(cy + Math.sin(a) * r)}`);
+    }
+    return 'M' + pts.join('L') + 'ZM32 20.5A9.5 9.5 0 1 0 32.01 20.5Z';
+  })();
+
+  const MUSH_CAP = 'M5.5 33C5.5 17 17.5 6 32 6C46.5 6 58.5 17 58.5 33C58.5 35.2 56.8 36.5 54.8 36.5H9.2C7.2 36.5 5.5 35.2 5.5 33Z';
+  const GHOST = roundPoly([
+    ...Array.from({ length: 19 }, (_, i) => { const t = Math.PI + (i * Math.PI) / 18; return [32 + Math.cos(t) * 22, 28 + Math.sin(t) * 22]; }),
+    [54, 52], [43, 45], [32, 52], [21, 45], [10, 52],
+  ], 4.4);
+
+  // hue/tone/shape live in the engine (contrast rules); color/art live here.
+  const SYMBOLS = {
+    heart: {
+      color: '#ff3f6c', shadow: 25,
+      shape: (a) => `<path d="${HEART}" ${a}/>`,
+      hl: shine(17.5, 15.5, 6.2, 3.4, -35, [27, 11.5, 1.6]),
+      face: face(32, 27, { gap: 17, mouth: 'open', blush: '#ffa9c0', mouthDy: 6 }),
+    },
+    star: {
+      color: '#ffc419', shadow: 22,
+      shape: (a) => `<path d="${STAR}" ${a}/>`,
+      hl: shine(27.5, 18.5, 2.7, 6.4, 24, [33, 13.2, 1.4]),
+      face: face(32, 35, { gap: 12, eyes: 'happy', mouthDy: 6.4, blush: '#ff8f6b' }),
+    },
+    moon: {
+      color: '#8f6bff', shadow: 20,
+      shape: (a) => `<path d="${MOON}" ${a}/>`,
+      hl: shine(15.5, 27, 2.8, 6.2, 28, [21.5, 18.5, 1.5]),
+      face: face(27, 40, { gap: 12.5, eyes: 'sleep', rotate: -12, mouthDy: 6.2, blushDx: 6.4, blushDy: 4, blush: '#ff8fc0' }),
+    },
+    drop: {
+      color: '#2f8bff', shadow: 20,
+      shape: (a) => `<path d="${DROP}" ${a}/>`,
+      hl: shine(21.5, 38, 3.4, 8, 18, [27, 24.5, 1.7]),
+      face: face(32, 43, { gap: 13, mouth: 'o', mouthDy: 6.2, blush: '#ff8fc0' }),
+    },
+    clover: {
+      color: '#2fcf6d', shadow: 24,
+      shape: (a) => CLOVER.map((d) => `<path d="${d}" ${a}/>`).join(''),
+      decor: `<path d="M32 13V20M32 44V51M13 32H20M44 32H51" fill="none" stroke="${SHADOW_TINT}" stroke-opacity=".22" stroke-width="1.6" stroke-linecap="round"/>`,
+      hl: shine(20, 17, 4.6, 2.6, -32, [27, 11.5, 1.4]),
+      face: face(32, 31, { gap: 11, mouthDy: 5.8, blush: '#ffb0a8', blushDx: 6.2 }),
+    },
+    cat: {
+      color: '#ff8a2b', shadow: 24,
+      shape: (a) => `<path d="${EAR_L}" ${a}/><path d="${EAR_R}" ${a}/><ellipse cx="32" cy="36" rx="24" ry="18.5" ${a}/>`,
+      decor:
+        `<path d="${roundPoly([[13, 24], [14.4, 12.5], [24, 18.5]], 1.8)}" fill="#ffb3c6"/>` +
+        `<path d="${roundPoly([[51, 24], [49.6, 12.5], [40, 18.5]], 1.8)}" fill="#ffb3c6"/>`,
+      hl: shine(19, 26.5, 6, 2.9, -18, [28.5, 23.5, 1.4]),
+      face:
+        face(32, 35.5, { gap: 20, mouth: 'cat', mouthDy: 8.4, blush: '#ff6f8f', blushDx: 5.6, blushDy: 3.6 }) +
+        `<path d="M29.6 41.2Q32 39.6 34.4 41.2Q32 44 29.6 41.2Z" fill="#ff6f8f"/>`,
+    },
+    gem: {
+      color: '#17d4cf', shadow: 24,
+      shape: (a) => `<path d="${GEM}" ${a}/>`,
+      decor:
+        `<path d="M22.5 11.4H41.5L45 21.6H19Z" fill="#fff" opacity=".24"/>` +
+        `<path d="M32 56L58 24H45L32 40Z" fill="#0b3d7a" opacity=".13"/>` +
+        `<path d="M8 24H56M19.5 10.5L24.5 24M44.5 10.5L39.5 24" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.3" stroke-linecap="round"/>`,
+      hl: shine(14.5, 20.5, 1.9, 4.2, 42, null),
+      face: face(32, 32.5, { gap: 13, mouthDy: 6.2, blush: '#ff8fc0', blushDx: 5.4 }),
+    },
+    donut: {
+      color: '#ff5fb5', shadow: 24, base: '#f0b167',
+      shape: (a) => `<path d="${DONUT_RING}" fill-rule="evenodd" clip-rule="evenodd" ${a}/>`,
+      icing: true,
+      decor:
+        `<path d="${ICING}" fill="url(#ic-donut)" fill-rule="evenodd"/>` +
+        `<path d="${ICING}" fill="url(#sh)" fill-rule="evenodd" opacity=".7"/>` +
+        [[19, 24, 40, '#fff6a8'], [26, 13.5, -25, '#7ee8ff'], [40.5, 13, 30, '#fff'], [47.5, 22.5, -60, '#b6ff9a'], [15.5, 33.5, 70, '#fff'], [49, 36, 20, '#fff6a8']]
+          .map(([x, y, r, c]) => `<rect x="${x - 2.7}" y="${y - 1}" width="5.4" height="2.1" rx="1.05" transform="rotate(${r} ${x} ${y})" fill="${c}"/>`).join(''),
+      hl: shine(15, 21, 2.4, 5.6, 38, [20.5, 12.5, 1.4]),
+      face: face(32, 45.4, { gap: 11, rx: 2.2, ry: 2.9, mouthDy: 4.6, blushDx: 6, blushDy: 3, blush: '#ff2f9a' }),
+    },
+    cloud: {
+      color: '#eef1ff', shadow: 25, base: '#f4f6ff', deep: '#5a55b8',
+      shape: (a) => `<circle cx="21" cy="37" r="12" ${a}/><circle cx="34" cy="28" r="16" ${a}/><circle cx="47" cy="37" r="12" ${a}/><rect x="13" y="36" width="42" height="17" rx="8.5" ${a}/>`,
+      hl: shine(27, 19.5, 6.4, 3.2, -28, [37, 15.8, 1.5]),
+      face: face(34, 39, { gap: 14, mouth: 'o', mouthDy: 5.4, blush: '#ff8fb8', blushDx: 6.4 }),
+    },
+  };
+
+  Object.assign(SYMBOLS, {
+    frog: {
+      color: '#6bd83c', shadow: 24, deep: '#1f6a3a',
+      shape: (a) => `<ellipse cx="32" cy="37" rx="25.5" ry="17" ${a}/><circle cx="19.5" cy="20" r="10.5" ${a}/><circle cx="44.5" cy="20" r="10.5" ${a}/>`,
+      decor:
+        `<ellipse cx="32" cy="45.5" rx="14.5" ry="7.5" fill="#fff" opacity=".2"/>` +
+        [19.5, 44.5].map((x) => `<circle cx="${x}" cy="20" r="7.2" fill="#fff" stroke="#b9e3a3" stroke-width=".9"/><circle cx="${x + 0.9}" cy="21" r="4.1" fill="${INK}"/><circle cx="${x + 2.3}" cy="19.4" r="1.5" fill="#fff"/><circle cx="${x - 0.6}" cy="22.6" r=".7" fill="#fff" opacity=".85"/>`).join(''),
+      hl: shine(11, 36, 2.3, 5, 14, [13.5, 29, 1.3]),
+      face:
+        `<ellipse cx="14.5" cy="42" rx="3.6" ry="2.2" fill="#ff5f86" opacity=".8"/><ellipse cx="49.5" cy="42" rx="3.6" ry="2.2" fill="#ff5f86" opacity=".8"/>` +
+        `<circle cx="29.6" cy="34.2" r=".95" fill="${INK}"/><circle cx="34.4" cy="34.2" r=".95" fill="${INK}"/>` +
+        `<path d="M23 40Q32 47.5 41 40" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>`,
+    },
+    mushroom: {
+      color: '#ff4b3e', shadow: 22, base: '#fff4de', deep: '#e0905f', shadeOp: 0.42, icing: true,
+      shape: (a) => `<path d="${MUSH_CAP}" ${a}/><rect x="19" y="33" width="26" height="22" rx="10" ${a}/>`,
+      decor:
+        `<path d="M20 36.5H44Q32 44 20 36.5Z" fill="${SHADOW_TINT}" opacity=".24"/>` +
+        `<path d="${MUSH_CAP}" fill="url(#ic-mushroom)" stroke="#8e1d3a" stroke-width="3" stroke-linejoin="round"/>` +
+        `<path d="${MUSH_CAP}" fill="url(#sh)" opacity=".9"/>` +
+        [[18.5, 22, 4.6], [33, 13.5, 3.6], [46, 22.5, 5], [31, 27, 2.8]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" opacity=".96"/>`).join(''),
+      hl: shine(15, 15.5, 5.4, 2.5, -40, [25, 10.5, 1.4]),
+      face: face(32, 46, { gap: 10.5, rx: 2.2, ry: 2.9, mouthDy: 4.6, blushDx: 3.6, blushDy: 3, blush: '#ff8f9c' }),
+    },
+    ghost: {
+      color: '#dc5ef2', shadow: 23,
+      shape: (a) => `<path d="${GHOST}" ${a}/>`,
+      hl: shine(20, 17, 5.8, 2.8, -36, [29.5, 11, 1.5]),
+      face: face(32, 28, { gap: 14, mouth: 'o', mouthDy: 6.8, blush: '#ff7ac8', blushDx: 6.4 }),
+    },
+    // Safety net: if the server ever sends a symbol this page has no art for,
+    // show this instead of nothing at all.
+    _fallback: {
+      color: '#9aa3ff', shadow: 22,
+      shape: (a) => `<circle cx="32" cy="32" r="23" ${a}/>`,
+      hl: shine(20, 20, 6, 3, -35, [29, 13, 1.5]),
+      face: face(32, 32, { gap: 13, mouth: 'o', mouthDy: 6 }),
+    },
+  });
+
+  function buildSymbolSprite() {
+    const defs = `
+      <linearGradient id="sh" gradientUnits="userSpaceOnUse" x1="0" y1="26" x2="0" y2="58">
+        <stop offset="0" stop-color="${SHADOW_TINT}" stop-opacity="0"/><stop offset="1" stop-color="${SHADOW_TINT}" stop-opacity=".34"/>
+      </linearGradient>
+      <radialGradient id="gs"><stop offset="0" stop-color="#000" stop-opacity=".42"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`;
+    const grad = (id, base, deep) => `
+      <radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="20" cy="15" r="56">
+        <stop offset="0" stop-color="${mix(base, '#ffffff', 0.58)}"/>
+        <stop offset=".42" stop-color="${base}"/>
+        <stop offset="1" stop-color="${mix(base, deep || SHADOW_TINT, 0.42)}"/>
+      </radialGradient>`;
+    const symbols = Object.entries(SYMBOLS).map(([id, s]) => {
+      const base = s.base || s.color;
+      const rim = mix(base, s.deep || SHADOW_TINT, 0.5);
+      const deep = mix(base, s.deep || SHADOW_TINT, 0.68);
+      const extra = s.icing ? grad('ic-' + id, s.color) : '';
+      return `<symbol id="sym-${id}" viewBox="0 0 64 64" overflow="visible">
+        ${grad('gb-' + id, base, s.deep)}${extra}<clipPath id="cp-${id}">${s.shape('')}</clipPath>
+        <ellipse cx="32" cy="58.6" rx="${s.shadow}" ry="3.7" fill="url(#gs)"/>
+        <g transform="translate(0 3.3)">${s.shape(`fill="${deep}" stroke="${deep}" stroke-width="2.6" stroke-linejoin="round"`)}</g>
+        ${s.shape(`fill="${rim}" stroke="${rim}" stroke-width="2.6" stroke-linejoin="round"`)}
+        <g clip-path="url(#cp-${id})"><rect width="64" height="64" fill="url(#gb-${id})"/><rect width="64" height="64" fill="url(#sh)" opacity="${s.shadeOp ?? 1}"/></g>
+        ${s.decor || ''}${s.hl}${s.face}
+      </symbol>`;
+    }).join('');
+    document.body.insertAdjacentHTML('afterbegin',
+      `<svg id="symbolSprite" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false"><defs>${defs}</defs>${symbols}</svg>`);
+  }
+  buildSymbolSprite();
+
+  const warnedSymbols = new Set();
   function symbolSvg(id) {
-    const s = SYMBOLS[id];
-    if (!s) return '';
-    return `<svg viewBox="0 0 24 24" style="color:${s.color};fill:${s.color}" aria-hidden="true">${s.body}</svg>`;
+    if (!id) return '';
+    if (!SYMBOLS[id]) {
+      if (!warnedSymbols.has(id)) { warnedSymbols.add(id); console.warn('[Symble] No artwork for symbol "' + id + '" - showing a placeholder. Is this page out of date?'); }
+      id = '_fallback';
+    }
+    return `<svg viewBox="0 0 64 64" aria-hidden="true"><use href="#sym-${id}"/></svg>`;
   }
 
   const CONCEPT_TEXT = { correct: 'Right spot', misplaced: 'Wrong spot', absent: 'Not in your guess' };
   const REASON_TEXT = {
-    timeout: "Time's up. Nobody cracked it.",
-    'out-of-rows': 'Out of rows. Nobody cracked it.',
+    revealed: 'The host revealed the answer.',
     skipped: 'Round skipped.',
   };
 
@@ -591,46 +727,35 @@
   const statusDot = $('statusDot');
   const statusText = $('statusText');
   const gridEl = $('grid');
-  const timerWrap = $('timerWrap');
-  const timerBar = $('timerBar');
-  const clockRow = $('clockRow');
-  const pointsBadge = $('pointsBadge');
-  const votesEl = $('votes');
+  const guessBadge = $('guessBadge');
   const resultEl = $('result');
   const confettiWrap = $('confettiWrap');
-  const diagLog = $('diagLog');
 
   let lastState = null;
-  let serverOffset = 0; // server clock minus this device's clock
-
-  function addLogLine(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    diagLog.prepend(div);
-    while (diagLog.children.length > 20) diagLog.removeChild(diagLog.lastChild);
-  }
 
   // ---- Connection status ----
-  socket.on('connect', () => addLogLine('Browser connected to game server.'));
-  socket.on('disconnect', () => addLogLine('Browser lost connection to game server (will auto-reconnect).'));
   socket.on('server:config', (cfg) => {
     if (cfg.defaultUsername) $('tiktokUsername').value = cfg.defaultUsername;
+    const missing = (cfg.symbols || []).filter((id) => !SYMBOLS[id]);
+    if (missing.length) console.warn('[Symble] This page has no artwork for: ' + missing.join(', ') + ' - it is out of date. Replace public/index.html with the newest version.');
   });
   socket.on('tiktok:status', (payload) => {
+    const st = ['connected', 'connecting', 'error'].includes(payload.state) ? payload.state : '';
     statusDot.className = 'status-dot ' + (payload.state === 'connected' ? 'connected' : payload.state === 'connecting' ? 'connecting' : '');
     statusText.textContent = payload.state.charAt(0).toUpperCase() + payload.state.slice(1);
-    addLogLine('[TikTok] ' + payload.state + ': ' + payload.message);
-  });
-  socket.on('diagnostics:update', (d) => {
-    $('diagConn').textContent = d.connectionState + (d.connectionMessage ? ' — ' + d.connectionMessage : '');
-    $('diagRawCount').textContent = d.rawEventCount;
-    $('diagLast').textContent = d.lastReceived ? (d.lastReceived.username + ': ' + d.lastReceived.text) : '—';
+    const box = $('connStatus');
+    box.className = 'conn-status ' + st;
+    box.textContent = payload.message || (payload.state === 'disconnected' ? 'Not connected.' : payload.state);
   });
   socket.on('testMode:status', (enabled) => { $('testModeToggle').checked = enabled; });
 
   // ---------------------------------------------------------------------
   // Board
   // ---------------------------------------------------------------------
+  function scrollToLatest() {
+    const m = document.querySelector('main');
+    requestAnimationFrame(() => m.scrollTo({ top: m.scrollHeight, behavior: 'smooth' }));
+  }
   let lastGridSig = '';
   let lastGridRound = null;
   let lastRowCount = 0;
@@ -644,38 +769,41 @@
 
   function renderGrid(state) {
     const rows = state.rows || [];
-    const total = Math.max(state.maxRows || 8, rows.length);
-    const sig = [state.roundNumber, state.status, total, rows.map((r) => r.word + (r.states ? '*' : '')).join(',')].join('|');
+    const sig = [state.roundNumber, state.status, rows.map((r) => r.word + (r.states ? '*' : '')).join(',')].join('|');
     if (sig === lastGridSig) return;
     lastGridSig = sig;
 
     // Only animate rows that appeared since the last render of this same round.
+    const firstRender = lastGridRound === null;
     const sameRound = lastGridRound === state.roundNumber;
     const prevCount = sameRound ? lastRowCount : rows.length;
     lastGridRound = state.roundNumber;
     lastRowCount = rows.length;
 
+    if (!rows.length) { gridEl.innerHTML = ''; return; }
+
     let html = '';
-    for (let r = 0; r < total; r++) {
+    for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
-      const isNew = row && r >= prevCount;
+      const isNew = r >= prevCount;
       let tiles = '';
       let syms = '';
       for (let i = 0; i < 5; i++) {
-        const ch = row ? escapeHtml(row.word[i]) : '';
-        let cls = 'tile' + (row ? ' filled' : '');
+        const ch = escapeHtml(row.word[i]);
+        let cls = 'tile filled';
         let style = `--i:${i};`;
-        if (row && row.states) {
+        if (row.states) {
           const col = stateColors(row.states[i], state.legend);
           cls += ' flip';
-          style += `--d:${r * 120 + i * 90}ms;--to-border:${col.border};--to-bg:${col.bg};`;
+          style += `--d:${i * 90}ms;--to-border:${col.border};--to-bg:${col.bg};`;
         }
         tiles += `<div class="${cls}" style="${style}">${ch}</div>`;
-        syms += `<div class="sym" style="--i:${i}">${row ? symbolSvg(row.symbols[i]) : ''}</div>`;
+        syms += `<div class="sym" style="--i:${i}">${symbolSvg(row.symbols[i])}</div>`;
       }
-      html += `<div class="grow${isNew ? ' new' : ''}">${tiles}<div class="gdiv"></div>${syms}</div>`;
+      html += `<div class="grow${isNew ? ' new' : ''}">${tiles}<div class="gspace"></div>${syms}</div>`;
     }
     gridEl.innerHTML = html;
+    if (rows.length > prevCount || (firstRender && rows.length)) scrollToLatest();
   }
 
   function renderTried(state) {
@@ -684,38 +812,22 @@
     $('tried').innerHTML = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((ch) => `<span class="${used.has(ch) ? 'on' : ''}">${ch}</span>`).join('');
   }
 
-  function renderVotes(state) {
-    const head = $('votesHead');
-    const list = $('voteList');
+  function renderHint(state) {
     const hint = $('hintLine');
     if (state.status === 'idle') {
-      head.textContent = '';
-      list.innerHTML = '';
       hint.innerHTML = 'Tap ⚙️ → Game → <strong>Start Game</strong> to begin. New here? Tap <strong>?</strong> for the rules.';
       return;
     }
-    if (state.phase === 'final') {
-      head.textContent = 'The board is full';
-      list.innerHTML = '';
-      hint.innerHTML = '<strong>Last chance!</strong> Type the secret word in chat before the clock runs out.';
-      return;
-    }
-    const tally = state.tally || [];
-    head.textContent = tally.length ? `Crowd vote: ${state.voters} viewer${state.voters === 1 ? '' : 's'} voting` : 'Crowd vote';
-    const max = tally.reduce((m, t) => Math.max(m, t.count), 1);
-    list.innerHTML = tally.map((t) => `
-      <div class="vote-row"><div class="fill" style="width:${Math.round((t.count / max) * 100)}%"></div><span>${escapeHtml(t.word)}</span><span class="n">${t.count}</span></div>
-    `).join('');
-    hint.innerHTML = state.rows.length === 0 && !tally.length
-      ? 'Type a <strong>5-letter word</strong> in chat to vote for the next row. Type the <strong>secret word</strong> to win!'
-      : (tally.length ? '' : 'No votes yet. Type a 5-letter word in chat.');
+    if (state.status === 'reveal') { hint.innerHTML = ''; return; }
+    hint.innerHTML = (state.rows || []).length === 0
+      ? 'Type a <strong>5-letter word</strong> in chat — a valid one goes straight onto the board. Type the <strong>secret word</strong> to win!'
+      : 'Keep guessing! Any fresh <strong>5-letter word</strong> lands on the board. Type the <strong>secret word</strong> to win!';
   }
 
   let confettiRound = null;
   function renderResult(state) {
     const revealed = state.status === 'reveal';
     resultEl.hidden = !revealed;
-    votesEl.hidden = revealed;
     if (!revealed) { confettiWrap.innerHTML = ''; return; }
 
     $('answerTiles').innerHTML = (state.answer || '').split('').map((ch) => `<div class="tile">${escapeHtml(ch)}</div>`).join('');
@@ -723,16 +835,17 @@
     const no = $('resultNoWinner');
     if (state.winner) {
       yes.hidden = false; no.hidden = true;
-      yes.textContent = '🎉 ' + state.winner.name + ' solved it! +' + state.winner.points + ' pts';
+      yes.textContent = '🎉 ' + state.winner.name + ' solved it!';
     } else {
       yes.hidden = true; no.hidden = false;
-      no.textContent = REASON_TEXT[state.reason] || 'Nobody cracked it.';
+      no.textContent = REASON_TEXT[state.reason] || 'Round over.';
     }
     $('legend').innerHTML = ['correct', 'misplaced', 'absent'].map((c) =>
       `<span class="chip">${state.legend ? symbolSvg(state.legend[c]) : ''}${CONCEPT_TEXT[c]}</span>`
     ).join('');
 
     if (state.winner && confettiRound !== state.roundNumber) burstConfetti();
+    if (confettiRound !== state.roundNumber) scrollToLatest();
     confettiRound = state.roundNumber;
   }
 
@@ -750,114 +863,34 @@
     }
   }
 
+  function renderGuessBadge(state) {
+    const active = state.status === 'active';
+    guessBadge.hidden = !active;
+    if (!active) return;
+    const n = (state.rows || []).length;
+    guessBadge.querySelector('span').textContent = n === 1 ? '1 guess so far' : n + ' guesses so far';
+  }
+
   function renderState(state) {
     if (!state) return;
     lastState = state;
-    serverOffset = (state.serverNow || Date.now()) - Date.now();
 
     if (state.status === 'idle') {
       $('roundLabel').textContent = 'Symble';
       $('roundSub').textContent = 'waiting to start';
     } else {
       $('roundLabel').textContent = 'Round #' + state.roundNumber;
-      const shown = (state.rows || []).filter((r) => !r.solved).length;
-      $('roundSub').textContent = shown + '/' + state.maxRows + ' rows';
+      $('roundSub').textContent = '';
     }
     if (state.wordBankSize) $('wordBankNote').textContent = 'Word bank: ' + state.wordBankSize + ' secret words. Custom words are added on top and kept on the server.';
 
     renderGrid(state);
     renderTried(state);
-    renderVotes(state);
+    renderHint(state);
     renderResult(state);
-    updateClock();
+    renderGuessBadge(state);
   }
   socket.on('game:state', renderState);
-
-  function secs(ms) { return Math.max(0, Math.ceil(ms / 1000)); }
-  function mmss(ms) {
-    const t = secs(ms);
-    return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
-  }
-
-  function updateClock() {
-    const s = lastState;
-    const active = s && s.status === 'active';
-    timerWrap.hidden = clockRow.hidden = !active;
-    pointsBadge.hidden = !active;
-    if (!active) return;
-
-    const now = Date.now() + serverOffset;
-    let pct;
-    if (s.phase === 'final') {
-      const left = s.finalEndsAt - now;
-      pct = left / s.finalMs;
-      $('clockLeft').textContent = 'Last chance: ' + secs(left) + 's';
-    } else {
-      const left = s.turnEndsAt - now;
-      pct = left / s.turnMs;
-      $('clockLeft').textContent = 'Next row locks in ' + secs(left) + 's';
-    }
-    $('clockRight').textContent = 'Round ends in ' + mmss(s.endsAt - now);
-    pct = Math.max(0, Math.min(1, pct));
-    timerBar.style.width = (pct * 100) + '%';
-    timerBar.classList.toggle('low', pct < 0.25);
-
-    const sc = s.scoring;
-    if (sc) {
-      const rowsLeft = Math.max(0, s.maxRows - (s.rows || []).length);
-      const timeLeft = Math.max(0, Math.min(1, (s.endsAt - now) / s.timeLimitMs));
-      const pts = Math.round(sc.base + rowsLeft * sc.perUnusedRow + sc.timeBonusMax * timeLeft);
-      pointsBadge.querySelector('span').textContent = 'Solve now for ' + pts + ' pts';
-    }
-  }
-  setInterval(updateClock, 200);
-
-  // ---------------------------------------------------------------------
-  // Leaderboard
-  // ---------------------------------------------------------------------
-  const AVATAR_COLORS = ['#ff5f9e', '#35e6ab', '#ffcb47', '#4fc3ff', '#b28dff', '#ff9e5f', '#2dd4bf'];
-  function avatarColor(name) {
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-    return AVATAR_COLORS[h % AVATAR_COLORS.length];
-  }
-  function initials(name) { return String(name || '?').trim().slice(0, 2).toUpperCase(); }
-
-  socket.on('game:leaderboard', (list) => {
-    const body = $('leaderboardBody');
-    if (!list || !list.length) {
-      body.innerHTML = '<div class="empty-note">No scores yet — be the first!</div>';
-      return;
-    }
-    const medals = ['🥇', '🥈', '🥉'];
-    body.innerHTML = list.map((entry, i) => `
-      <div class="lb-row">
-        <span class="lb-rank">${medals[i] || (i + 1)}</span>
-        <span class="lb-avatar" style="background:${avatarColor(entry.name)}">${escapeHtml(initials(entry.name))}</span>
-        <span class="lb-name">${escapeHtml(entry.name)}</span>
-        <span class="lb-score">${entry.score}</span>
-      </div>
-    `).join('');
-  });
-
-  // ---------------------------------------------------------------------
-  // Chat feed
-  // ---------------------------------------------------------------------
-  const REJECT_TEXT = { 'not-a-word': 'not a word', 'already-played': 'already played', 'board-full': 'board full' };
-  socket.on('chat:message', (msg) => {
-    const chatBody = $('chatBody');
-    if (chatBody.querySelector('.empty-note')) chatBody.innerHTML = '';
-    const row = document.createElement('div');
-    row.className = 'chat-row' + (msg.correct ? ' correct' : '');
-    row.innerHTML = `<span class="u">${escapeHtml(msg.username)}</span>: ${escapeHtml(msg.text)}` +
-      (msg.correct ? ` <span class="tag">solved +${msg.points}</span>` : '') +
-      (msg.vote ? ' <span class="tag vote">vote</span>' : '') +
-      (msg.rejected ? ` <span class="tag rej">${REJECT_TEXT[msg.rejected] || 'ignored'}</span>` : '') +
-      (msg.source === 'test' ? ' <span class="src">test</span>' : '');
-    chatBody.appendChild(row);
-    chatBody.scrollTop = chatBody.scrollHeight;
-    while (chatBody.children.length > 100) chatBody.removeChild(chatBody.firstChild);
-  });
 
   // ---------------------------------------------------------------------
   // Sheets (rules + host controls) and tabs
@@ -892,9 +925,9 @@
   (function buildRules() {
     const guess = 'THICK';
     const secret = 'SHAKE';
-    const syms = ['diamond', 'infinity', 'diamond', 'sun', 'diamond'];
+    const syms = ['cloud', 'clover', 'cloud', 'heart', 'cloud'];
     $('rulesDemo').innerHTML =
-      `<div class="grow">${guess.split('').map((ch) => `<div class="tile filled">${ch}</div>`).join('')}<div class="gdiv"></div>${syms.map((s) => `<div class="sym">${symbolSvg(s)}</div>`).join('')}</div>` +
+      `<div class="grow">${guess.split('').map((ch) => `<div class="tile filled">${ch}</div>`).join('')}<div class="gspace"></div>${syms.map((s) => `<div class="sym">${symbolSvg(s)}</div>`).join('')}</div>` +
       `<div class="grow" style="margin-top:6px"><div class="cap">the secret word, hidden in the real game</div>${secret.split('').map((ch) => `<div class="sl">${ch}</div>`).join('')}</div>`;
     $('rulesKey').innerHTML = ['Right spot: that letter is in your guess, in the same position', 'Wrong spot: that letter is in your guess, but somewhere else', 'Not in your guess: that letter (or a spare copy of it) isn\'t in your guess']
       .map((t) => `<div><span class="q">?</span><span>${t}</span></div>`).join('');
@@ -909,25 +942,8 @@
   $('disconnectBtn').addEventListener('click', () => socket.emit('host:disconnectTikTok'));
   $('startGameBtn').addEventListener('click', () => socket.emit('host:startGame'));
   $('stopGameBtn').addEventListener('click', () => socket.emit('host:stopGame'));
+  $('revealAnswerBtn').addEventListener('click', () => socket.emit('host:revealAnswer'));
   $('skipRoundBtn').addEventListener('click', () => socket.emit('host:skipRound'));
-  $('resetLbBtn').addEventListener('click', () => {
-    if (confirm('Reset the leaderboard? This cannot be undone.')) socket.emit('host:resetLeaderboard');
-  });
-
-  // Pacing settings
-  const settingFields = { turnSeconds: $('setTurn'), finalSeconds: $('setFinal'), maxRows: $('setRows'), roundSeconds: $('setRound') };
-  socket.on('game:settings', (s) => {
-    for (const [key, el] of Object.entries(settingFields)) {
-      if (document.activeElement !== el && s[key] != null) el.value = s[key];
-    }
-  });
-  $('saveSettingsBtn').addEventListener('click', () => {
-    const patch = {};
-    for (const [key, el] of Object.entries(settingFields)) patch[key] = el.value;
-    socket.emit('host:updateSettings', patch);
-    const note = $('settingsNote');
-    note.textContent = 'Saved. Rows on the board change from the next round.';
-  });
 
   $('sendHostMsgBtn').addEventListener('click', () => {
     const text = $('hostMsgText').value;

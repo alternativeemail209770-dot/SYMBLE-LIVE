@@ -49,6 +49,9 @@ export const SYMBOL_INFO = {
   gem:    { hue: 180,  tone: 'mid',   shape: 'faceted' },
   donut:  { hue: 325,  tone: 'mid',   shape: 'ring' },
   cloud:  { hue: null, tone: 'light', shape: 'lobed' },
+  frog:     { hue: 100, tone: 'mid', shape: 'frog' },
+  mushroom: { hue: 4,   tone: 'mid', shape: 'mushroom' },
+  ghost:    { hue: 292, tone: 'mid', shape: 'ghost' },
 };
 export const SYMBOL_POOL = Object.keys(SYMBOL_INFO);
 export const MIN_HUE_GAP = 70; // degrees on the colour wheel between any two symbols in a round

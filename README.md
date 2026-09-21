@@ -72,6 +72,9 @@ symble-live-game/
     └── index.html           <- everything you see on screen (no password needed)
 ```
 
+(The symbols are drawn in `public/index.html`; which ones can appear together is decided in
+`gameEngine.js`. There are 12 cute characters and 66 different trios.)
+
 You never need to open or understand the code. You will only:
 1. Get a free API key.
 2. Upload these files to GitHub (drag-and-drop, no commands).
@@ -238,6 +241,18 @@ When you're happy, turn Test Mode back **off**.
 ---
 
 ## Troubleshooting
+
+**The page still shows old things: a "Top 10" box, a "Live Chat" box, the word
+"undefined", a white line between the letters and symbols, or some symbols
+missing.**
+You're looking at an out-of-date `index.html`. The newest one must sit **inside
+the `public` folder** on GitHub (`public/index.html`), replacing the old file.
+Open the `public` folder on GitHub, click `index.html`, then the pencil (✏️) and
+paste in the new contents (or use *Add file → Upload files* while inside
+`public`). Then in Render click **Manual Deploy → Deploy latest commit** and
+refresh the page. As a safety net, the server now also notices when two copies
+exist and serves the newer one; the Render **Logs** tab shows which one it chose
+(look for `[PAGE] Serving ...`).
 
 **Guesses typed in your live chat never show up on the board.**
 Your comments aren't reaching the server. Double-check: (a) you are
