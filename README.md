@@ -19,8 +19,10 @@ order. It should take about 20–30 minutes the first time.
 
 **The rules of Symble**
 
-- Every round has a secret 5-letter word and **3 random symbols**. Each symbol
-  secretly means one thing, and nobody is told which:
+- Every round has a secret 5-letter word and **3 random symbols**. The three
+  are always picked to look very different from each other (a different colour
+  *and* a different shape), so they can't be mixed up. Each symbol secretly
+  means one thing, and nobody is told which:
   - *right spot* — that letter is in the guess, in the same position
   - *wrong spot* — that letter is in the guess, but somewhere else
   - *not in your guess* — that letter isn't in the guess
@@ -59,7 +61,7 @@ The **?** button in the top bar shows this to your viewers, with a worked exampl
 ```
 symble-live-game/
 ├── server.js            <- the "brain": connects to TikTok, runs the game
-├── gameEngine.js         <- the Symble rules: symbols, votes, rows, scoring
+├── gameEngine.js         <- the Symble rules: symbols, rows, scoring
 ├── words.json             <- the secret words (880+ everyday 5-letter words)
 ├── guesses.json           <- every other word viewers are allowed to guess (6,500+)
 ├── package.json           <- tells the server what software it needs
@@ -161,7 +163,7 @@ You now have a GitHub repository Render can deploy from.
 
 1. On your phone (or computer), open your Render URL.
 2. Tap the **⚙️ gear icon** in the top-right corner. A panel slides up with
-   tabs: **Connect / Game / Message / Add Word / Status**. There's nothing to
+   tabs: **Connect / Game / Message / Add Word / Test**. There's nothing to
    unlock — it opens straight away.
 
 > **A note on Host Controls:** anyone who opens your game's URL can tap the
@@ -176,7 +178,7 @@ You now have a GitHub repository Render can deploy from.
 
 You don't need to be live on TikTok to try this out:
 
-1. Open the **Status** tab and flip the "Simulate fake TikTok chat" switch
+1. Open the **Test** tab and flip the "Simulate fake TikTok chat" switch
    **on**. Fake viewers will start guessing words every second or so, and
    every so often one of them will "solve" the puzzle.
 2. Open the **Game** tab and tap **▶ Start Game**.
@@ -186,9 +188,10 @@ You don't need to be live on TikTok to try this out:
 4. You can also type guesses yourself in the **Message** tab. A fresh, valid
    5-letter word goes straight onto the board, and the secret word wins the
    round.
-5. The **Status** tab also shows live diagnostics — a counter of every
-   message received and the last one — so you always know things are
-   working even without checking server logs.
+5. The **Connect** tab shows the current connection status underneath the
+   buttons (for example "Connected to room ..."), and any error message if
+   something goes wrong. Chat messages themselves are never displayed or
+   stored.
 
 When you're happy, turn Test Mode back **off**.
 
@@ -236,12 +239,14 @@ When you're happy, turn Test Mode back **off**.
 
 ## Troubleshooting
 
-**"Diagnostics" shows 0 raw events during a live stream.**
+**Guesses typed in your live chat never show up on the board.**
 Your comments aren't reaching the server. Double-check: (a) you are
 actually LIVE on TikTok, (b) the username you typed matches your TikTok
-handle exactly, (c) the status dot is green/"Connected."
+handle exactly, (c) the status dot is green/"Connected." If in doubt, turn
+on Test Mode (Host Controls → Test) — if fake guesses appear on the board,
+the game itself is fine and the problem is the TikTok connection.
 
-**Status shows "error" after 3 attempts.**
+**The Connect tab shows "error" after 3 attempts.**
 Usually means either the username is wrong, you're not currently live, or
 the Euler Stream key is missing/invalid. Re-check Step 7 and try again —
 the game always retries automatically before giving up.

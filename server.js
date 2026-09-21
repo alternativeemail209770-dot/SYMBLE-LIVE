@@ -76,19 +76,14 @@ const customWords = loadJsonSafe(CUSTOM_WORDS_PATH, []);
 const engine = new GameEngine([...builtInWords, ...customWords], validGuesses);
 
 // ---------------------------------------------------------------------------
-// 3. Diagnostics counters (shown on-screen so a non-coder can self-debug)
+// 3. Connection state (remembered so a page opened mid-stream shows the
+//    right status straight away). Chat messages are NOT stored or broadcast.
 // ---------------------------------------------------------------------------
 const diagnostics = {
-  rawEventCount: 0,
-  lastReceived: null, // { username, text, ts }
   connectionState: 'disconnected', // disconnected | connecting | connected | error
   connectionMessage: '',
   loggedSamples: 0,
 };
-
-function broadcastDiagnostics() {
-  io.emit('diagnostics:update', diagnostics);
-}
 
 // ---------------------------------------------------------------------------
 // 4. TikTok LIVE connection management
@@ -120,7 +115,6 @@ function wireConnectionEvents(connection) {
       reconnectAttempts = 0;
       diagnostics.connectionState = 'connected';
       diagnostics.connectionMessage = `Connected to room ${state?.roomId || ''}`;
-      broadcastDiagnostics();
       io.emit('tiktok:status', { state: 'connected', message: diagnostics.connectionMessage });
     })
   );
@@ -130,7 +124,6 @@ function wireConnectionEvents(connection) {
     safe('tiktok:disconnected', ({ code, reason } = {}) => {
       diagnostics.connectionState = 'disconnected';
       diagnostics.connectionMessage = reason || `Disconnected (code ${code ?? 'n/a'})`;
-      broadcastDiagnostics();
       io.emit('tiktok:status', { state: 'disconnected', message: diagnostics.connectionMessage });
     })
   );
@@ -141,7 +134,6 @@ function wireConnectionEvents(connection) {
       console.error('[TIKTOK ERROR]', info, exception);
       diagnostics.connectionState = 'error';
       diagnostics.connectionMessage = String(info || exception?.message || 'Unknown error');
-      broadcastDiagnostics();
       io.emit('tiktok:status', { state: 'error', message: diagnostics.connectionMessage });
     })
   );
@@ -156,10 +148,6 @@ function wireConnectionEvents(connection) {
       }
 
       const { text, username, displayName } = extractChatFields(data);
-
-      diagnostics.rawEventCount += 1;
-      diagnostics.lastReceived = { username: displayName, text, ts: Date.now() };
-      broadcastDiagnostics();
 
       engine.handleGuess(username, displayName, text);
     })
@@ -193,7 +181,6 @@ async function connectToTikTok(username, signApiKey) {
 
   diagnostics.connectionState = 'connecting';
   diagnostics.connectionMessage = `Connecting to @${cleanUsername}...`;
-  broadcastDiagnostics();
   io.emit('tiktok:status', { state: 'connecting', message: diagnostics.connectionMessage });
 
   const connection = new TikTokLiveConnection(cleanUsername, { signApiKey: apiKey });
@@ -211,7 +198,6 @@ async function connectToTikTok(username, signApiKey) {
       console.error(`[TIKTOK] Connect attempt ${attempt} failed:`, err?.message || err);
       diagnostics.connectionMessage = `Attempt ${attempt}/${MAX_RETRIES} failed: ${err?.message || err}`;
       diagnostics.connectionState = attempt < MAX_RETRIES ? 'connecting' : 'error';
-      broadcastDiagnostics();
       io.emit('tiktok:status', { state: diagnostics.connectionState, message: diagnostics.connectionMessage });
 
       if (attempt >= MAX_RETRIES) {
@@ -239,7 +225,6 @@ async function disconnectFromTikTok() {
   }
   diagnostics.connectionState = 'disconnected';
   diagnostics.connectionMessage = 'Disconnected by host.';
-  broadcastDiagnostics();
   io.emit('tiktok:status', { state: 'disconnected', message: diagnostics.connectionMessage });
 }
 
@@ -273,11 +258,7 @@ function startTestMode() {
         text = FAKE_CHATTER[Math.floor(Math.random() * FAKE_CHATTER.length)];
       }
 
-      const label = `${user} (test)`;
-      diagnostics.rawEventCount += 1;
-      diagnostics.lastReceived = { username: label, text, ts: Date.now() };
-      broadcastDiagnostics();
-      engine.handleGuess(user, label, text);
+      engine.handleGuess(user, `${user} (test)`, text);
     }),
     1200
   );
@@ -294,7 +275,6 @@ function stopTestMode() {
 io.on('connection', (socket) => {
   // Send current snapshot to the newly connected client.
   socket.emit('game:state', engine.getPublicState());
-  socket.emit('diagnostics:update', diagnostics);
   socket.emit('tiktok:status', { state: diagnostics.connectionState, message: diagnostics.connectionMessage });
   socket.emit('server:config', {
     defaultUsername: DEFAULT_TIKTOK_USERNAME,
@@ -329,10 +309,6 @@ io.on('connection', (socket) => {
     const who = String(name || 'Host').trim() || 'Host';
     const clean = String(text || '').trim();
     if (!clean) return;
-
-    diagnostics.rawEventCount += 1;
-    diagnostics.lastReceived = { username: `${who} (host)`, text: clean, ts: Date.now() };
-    broadcastDiagnostics();
 
     engine.handleGuess(who, who, clean);
   }));

@@ -7,6 +7,8 @@ import { EventEmitter } from 'events';
 // * Every round, 3 symbols are drawn at random and each is secretly assigned
 //   one meaning:  "correct spot", "wrong spot", or "not in the guess".
 //   Nobody is told which symbol means what - players have to work it out.
+//   The 3 symbols are always picked to look VERY different from each other
+//   (different colour AND different silhouette) so they can't be confused.
 // * When a word is guessed, the board shows 5 symbols next to it. Symbol #1
 //   describes the SECRET word's 1st letter, symbol #2 its 2nd letter, and so on
 //   (NOT the letters of the guess!):
@@ -28,8 +30,49 @@ import { EventEmitter } from 'events';
 
 export const WORD_LENGTH = 5;
 export const CONCEPTS = ['correct', 'misplaced', 'absent'];
-// Ids must match the SVG symbols drawn in public/index.html
-export const SYMBOL_POOL = ['heart', 'drop', 'sun', 'infinity', 'star', 'diamond', 'moon', 'bolt', 'plus', 'triangle'];
+// ---------------------------------------------------------------------------
+// Symbols. Ids must match the SVG symbols drawn in public/index.html.
+//   hue   - the symbol's main colour as an angle on the colour wheel (0-360).
+//           null = white/neutral.
+//   tone  - 'light' or 'mid'. Two light symbols are never used together
+//           (e.g. a yellow star next to a white cloud would blur together).
+//   shape - silhouette family. Two symbols of the same family are never used
+//           together (the clover and the cloud are both "lobed", for example).
+// ---------------------------------------------------------------------------
+export const SYMBOL_INFO = {
+  heart:  { hue: 348,  tone: 'mid',   shape: 'heart' },
+  star:   { hue: 45,   tone: 'light', shape: 'spiky' },
+  moon:   { hue: 258,  tone: 'mid',   shape: 'crescent' },
+  drop:   { hue: 216,  tone: 'mid',   shape: 'teardrop' },
+  clover: { hue: 145,  tone: 'mid',   shape: 'lobed' },
+  cat:    { hue: 27,   tone: 'mid',   shape: 'ears' },
+  gem:    { hue: 180,  tone: 'mid',   shape: 'faceted' },
+  donut:  { hue: 325,  tone: 'mid',   shape: 'ring' },
+  cloud:  { hue: null, tone: 'light', shape: 'lobed' },
+};
+export const SYMBOL_POOL = Object.keys(SYMBOL_INFO);
+export const MIN_HUE_GAP = 70; // degrees on the colour wheel between any two symbols in a round
+
+/** True if two symbols are too alike in colour or shape to share a round. */
+export function symbolsClash(idA, idB) {
+  const a = SYMBOL_INFO[idA], b = SYMBOL_INFO[idB];
+  if (a.shape === b.shape) return true;
+  if (a.hue === null || b.hue === null) return a.tone === 'light' && b.tone === 'light';
+  const gap = Math.abs(a.hue - b.hue);
+  return Math.min(gap, 360 - gap) < MIN_HUE_GAP;
+}
+
+/** Every group of 3 symbols where no two of them clash. */
+export const SYMBOL_TRIPLES = (() => {
+  const out = [];
+  for (let i = 0; i < SYMBOL_POOL.length; i++)
+    for (let j = i + 1; j < SYMBOL_POOL.length; j++)
+      for (let k = j + 1; k < SYMBOL_POOL.length; k++) {
+        const t = [SYMBOL_POOL[i], SYMBOL_POOL[j], SYMBOL_POOL[k]];
+        if (!symbolsClash(t[0], t[1]) && !symbolsClash(t[0], t[2]) && !symbolsClash(t[1], t[2])) out.push(t);
+      }
+  return out;
+})();
 
 const STATUS = { IDLE: 'idle', ACTIVE: 'active', REVEAL: 'reveal' };
 const ROUND_GAP_MS = 6500; // pause between rounds so the reveal is readable
@@ -218,8 +261,9 @@ export class GameEngine extends EventEmitter {
     const answer = this._pickWord();
     this.roundNumber += 1;
 
-    // 3 random symbols, each given one secret meaning for this round only.
-    const symbols = shuffle(SYMBOL_POOL).slice(0, 3);
+    // 3 random symbols (always a clearly-different-looking trio), each given
+    // one secret meaning for this round only.
+    const symbols = shuffle(SYMBOL_TRIPLES[Math.floor(Math.random() * SYMBOL_TRIPLES.length)]);
     const concepts = shuffle(CONCEPTS);
     const symbolMap = {};
     concepts.forEach((concept, i) => { symbolMap[concept] = symbols[i]; });
