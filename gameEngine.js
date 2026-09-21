@@ -52,6 +52,16 @@ export function normalizeLengthConfig(cfg = {}, base = DEFAULT_LENGTH_CONFIG) {
   return { mode, fixed: clampLen(cfg.fixed ?? base.fixed, base.fixed), min, max };
 }
 export const CONCEPTS = ['correct', 'misplaced', 'absent'];
+
+// A guess that reaches handleGuess() but doesn't land on the board is always
+// rejected for exactly one of these two reasons - never silently:
+//   'not-a-word'      - not found in the accepted-guesses dictionary at all
+//   'already-played'  - a legit word, but it conflicts with a row already on
+//                        the board this round (someone already guessed it)
+export const REJECTION_REASONS = {
+  'not-a-word': "Not a recognized word in the game's dictionary.",
+  'already-played': 'That word has already been guessed this round.',
+};
 // ---------------------------------------------------------------------------
 // Symbols. Ids must match the SVG symbols drawn in public/index.html.
 //   hue   - the symbol's main colour as an angle on the colour wheel (0-360).
@@ -415,8 +425,22 @@ export class GameEngine extends EventEmitter {
       return { correct: true, name };
     }
 
-    if (!this.valid.has(word)) return { rejected: 'not-a-word', word };
-    if (c.guessed.has(word)) return { rejected: 'already-played', word };
+    // Reject anything that isn't a real word in the accepted-guesses dictionary
+    // (words.json + guesses.json + the big downloaded list). This is a pure
+    // dictionary lookup - it doesn't matter what else has been guessed.
+    if (!this.valid.has(word)) {
+      const info = { reason: 'not-a-word', word, name };
+      this.emit('guessRejected', info);
+      return { rejected: 'not-a-word', word };
+    }
+    // Reject a word that's already a row on THIS round's board. Every row has to
+    // be a fresh word - re-typing one that's already up there conflicts with the
+    // existing row rather than adding new information to the board.
+    if (c.guessed.has(word)) {
+      const info = { reason: 'already-played', word, name };
+      this.emit('guessRejected', info);
+      return { rejected: 'already-played', word };
+    }
 
     // A fresh, valid guess that doesn't conflict with anything already on the
     // board goes straight in as the next row - no vote, no waiting.

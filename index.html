@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-<meta name="symble-build" content="4" />
-<title>Symble Live</title>
+<meta name="twistle-build" content="6" />
+<title>TWISTLE</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -28,7 +28,6 @@
     --radius-md: 16px;
     --radius-sm: 11px;
     --vh: 1vh;
-    --board-w: 640px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -55,6 +54,7 @@
     position: relative; z-index: 5;
   }
   .brand { display: flex; align-items: center; gap: 8px; }
+  .brand h1 { letter-spacing: 1.5px; }
   .brand-badge {
     width: 34px; height: 34px; border-radius: 11px;
     background: linear-gradient(145deg, var(--pink), #b23dff);
@@ -82,6 +82,11 @@
     font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
     transition: transform 0.12s ease, background 0.12s ease;
   }
+  .icon-btn[hidden] { display: none; }
+  .icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-btn .fs-exit { display: none; }
+  html.is-fs .icon-btn .fs-enter { display: none; }
+  html.is-fs .icon-btn .fs-exit { display: inline; }
   .icon-btn:active { transform: scale(0.92); }
   .icon-btn:hover { background: var(--panel-3); }
 
@@ -101,9 +106,10 @@
     position: relative;
     box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   }
+  .board { --content-w: 640px; }
   .board .meta-row {
     display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    margin: 0 auto 12px; max-width: var(--board-w);
+    margin: 0 auto 12px; max-width: max(var(--content-w, 640px), 320px);
   }
   .round-chip {
     display: inline-flex; align-items: center; gap: 7px;
@@ -121,19 +127,29 @@
   }
   .guess-badge[hidden] { display: none; }
 
-  /* The guess grid: 5 letter tiles | divider | 5 symbols */
-  .grid { container-type: inline-size; width: 100%; display: grid; row-gap: 6px; max-width: var(--board-w); margin: 0 auto; }
-  .grow {
-    display: grid; grid-template-columns: repeat(5, 1fr) 10px repeat(5, 0.86fr);
-    column-gap: 4px; align-items: center;
+  /* The guess grid. Each guess is a block of letter tiles plus a block of symbols (one per letter).
+     JS (applyLayout) measures the width and picks the tile size and one of two layouts from the word length,
+     so it always stays comfortable to read:
+       .mode-side   letters on the left, symbols on the right (shorter words)
+       .mode-stack  symbols directly under the letters; very long words wrap onto extra lines */
+  .grid {
+    --cell: 40px; --cols: 5; --gap: 4px; --sp: 16px;
+    width: 100%; max-width: 1100px; margin: 0 auto;
+    display: flex; flex-direction: column; align-items: center; row-gap: 6px;
   }
-  .gspace { min-width: 0; } /* empty gap between the letters and the symbols - no line */
+  .grid.mode-stack { row-gap: 16px; }
+  .grow { display: flex; align-items: center; justify-content: center; gap: var(--sp); }
+  .mode-stack .grow { flex-direction: column; gap: calc(var(--gap) + 3px); }
+  .lets, .syms { display: grid; grid-template-columns: repeat(var(--cols), var(--cell)); gap: var(--gap); justify-content: center; }
+  .mode-stack .syms { position: relative; }
+  .mode-stack .syms::before { content: ''; position: absolute; inset: -4px -6px; border-radius: 14px; background: rgba(140,150,255,0.07); border: 1px solid rgba(140,150,255,0.11); }
+  .mode-stack .syms > * { position: relative; }
   .tile {
-    aspect-ratio: 1; border-radius: 9px; display: flex; align-items: center; justify-content: center;
-    font-family: 'Fredoka', sans-serif; font-weight: 700; color: #fff;
-    font-size: clamp(17px, 5.8vw, 27px); line-height: 1;
-    font-size: calc((100cqw - 50px) / 9.3 * 0.6);
-    background: #0e0f26; border: 2px solid #23264f;
+    width: var(--cell); height: var(--cell); border-radius: calc(var(--cell) * 0.22);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fredoka', sans-serif; font-weight: 700; color: #fff; line-height: 1;
+    font-size: calc(var(--cell) * 0.58);
+    background: #0e0f26; border: max(1.5px, calc(var(--cell) * 0.055)) solid #23264f;
     box-shadow: inset 0 2px 3px rgba(0,0,0,0.45);
   }
   .tile.filled { border-color: #6a6e9c; background: #14163a; }
@@ -144,18 +160,18 @@
     50%  { transform: rotateX(90deg); border-color: var(--to-border); background: var(--to-bg); }
     100% { transform: rotateX(0); border-color: var(--to-border); background: var(--to-bg); }
   }
-  .grow.new .tile { animation: tile-pop 0.28s cubic-bezier(.34,1.56,.64,1) both; animation-delay: calc(var(--i) * 45ms); }
+  .grow.new .tile { animation: tile-pop 0.28s cubic-bezier(.34,1.56,.64,1) both; animation-delay: min(calc(var(--i) * 45ms), 600ms); }
   @keyframes tile-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-  .sym { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
+  .sym { width: var(--cell); height: var(--cell); display: flex; align-items: center; justify-content: center; }
   .sym:empty::before { content: ''; width: 26%; aspect-ratio: 1; border-radius: 50%; background: #23264f; }
   .sym svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 3px 3px rgba(0,0,0,0.45)); }
-  .grow.new .sym svg { animation: sym-in 0.4s cubic-bezier(.34,1.56,.64,1) both; animation-delay: calc(400ms + var(--i) * 70ms); }
+  .grow.new .sym svg { animation: sym-in 0.4s cubic-bezier(.34,1.56,.64,1) both; animation-delay: calc(300ms + min(calc(var(--i) * 60ms), 700ms)); }
   @keyframes sym-in { from { transform: scale(0) rotate(-40deg); } to { transform: scale(1) rotate(0); } }
 
   /* Status line + keyboard (letters used so far) */
-  .hint-line { font-size: 12.5px; font-weight: 600; color: var(--text-dim); line-height: 1.45; text-align: center; max-width: var(--board-w); margin: 0 auto 14px; }
+  .hint-line { font-size: 12.5px; font-weight: 600; color: var(--text-dim); line-height: 1.45; text-align: center; max-width: max(var(--content-w, 640px), 320px); margin: 0 auto 14px; }
   .hint-line strong { color: #fff; }
-  .tried { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: var(--board-w); margin: 0 auto 16px; }
+  .tried { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: max(var(--content-w, 640px), 320px); margin: 0 auto 16px; }
   .tried span {
     width: 20px; height: 22px; display: flex; align-items: center; justify-content: center;
     border-radius: 6px; font-size: 11px; font-weight: 800; color: var(--text-faint); background: #0e0f26;
@@ -163,10 +179,10 @@
   .tried span.on { color: #fff; background: var(--panel-3); }
 
   /* End-of-round result */
-  .result { max-width: var(--board-w); margin: 16px auto 0; text-align: center; animation: fadein 0.25s ease; }
+  .result { max-width: max(var(--content-w, 640px), 320px); margin: 16px auto 0; text-align: center; animation: fadein 0.25s ease; }
   .result[hidden] { display: none; }
-  .answer-tiles { display: flex; justify-content: center; gap: 6px; margin-bottom: 8px; }
-  .answer-tiles .tile { width: clamp(40px, 9vw, 60px); aspect-ratio: 1; border-color: var(--gold); background: color-mix(in srgb, var(--gold) 16%, #14163a); color: var(--gold); font-size: clamp(22px, 5vw, 32px); }
+  .answer-tiles { --cell: 48px; --cols: 5; --gap: 5px; display: grid; grid-template-columns: repeat(var(--cols), var(--cell)); gap: var(--gap); justify-content: center; margin-bottom: 8px; }
+  .answer-tiles .tile { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 16%, #14163a); color: var(--gold); }
   .result .winner { font-size: 16px; font-weight: 800; color: var(--mint); font-family: 'Fredoka', sans-serif; }
   .result .nowinner { font-size: 14px; font-weight: 700; color: var(--text-dim); }
   .legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
@@ -185,11 +201,11 @@
   .rules-body { font-size: 13.5px; line-height: 1.5; color: var(--text); }
   .rules-body p { margin: 0 0 10px; color: var(--text-dim); font-weight: 600; }
   .rules-body p strong { color: #fff; }
-  .rules-demo { max-width: 340px; margin: 6px auto 14px; }
-  .rules-demo .grow { grid-template-columns: repeat(5, 1fr) 10px repeat(5, 0.9fr); }
-  .rules-demo .tile { font-size: 20px; }
-  .rules-demo .sl { text-align: center; font-size: 12px; font-weight: 800; color: var(--text-faint); }
-  .rules-demo .cap { grid-column: 1 / 7; font-size: 11px; font-weight: 700; color: var(--text-faint); text-align: right; padding-right: 6px; }
+  .rules-demo { max-width: 360px; margin: 6px auto 14px; }
+  .rules-demo .grid { --cell: 30px; --cols: 5; --gap: 4px; --sp: 12px; row-gap: 4px; }
+  .rules-demo .tile { font-size: 17px; }
+  .rules-demo .sl { display: flex; align-items: center; justify-content: center; height: 16px; font-size: 12px; font-weight: 800; color: var(--text-faint); }
+  .rules-demo .cap { width: calc(var(--cols) * var(--cell) + (var(--cols) - 1) * var(--gap)); font-size: 11px; font-weight: 700; color: var(--text-faint); text-align: right; padding-right: 6px; }
   .rules-key { display: grid; gap: 6px; margin: 4px 0 12px; }
   .rules-key div { display: flex; gap: 10px; align-items: center; font-size: 13px; font-weight: 700; color: var(--text); }
   .rules-key svg { width: 30px; height: 30px; flex: 0 0 auto; overflow: visible; }
@@ -277,10 +293,33 @@
   input:checked + .slider:before { transform: translateX(18px); }
   .small-note { font-size: 11.5px; color: var(--text-faint); margin-top: 8px; line-height: 1.4; }
   .error-msg { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 14px; font-weight: 700; }
+  .error-msg.ok { color: var(--mint); }
+  .rejected-feed { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+  .rejected-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; }
+  .rejected-row .rr-word { font-weight: 800; letter-spacing: 0.03em; }
+  .rejected-row .rr-reason { color: var(--danger); font-size: 11px; font-weight: 700; text-align: right; }
+  .rejected-row .rr-reason.dupe { color: var(--gold); }
+  .rejected-row .rr-who { color: var(--text-faint); font-size: 10.5px; }
   .section-title { font-size: 12.5px; font-weight: 800; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; margin: 14px 0 8px; }
   .section-title:first-child { margin-top: 2px; }
 
+  /* Word-length picker in Host Controls */
+  .seg { display: flex; gap: 4px; background: #0e0f26; border: 1px solid var(--line); border-radius: 14px; padding: 4px; margin-top: 4px; }
+  .seg button { flex: 1; border: none; background: transparent; color: var(--text-dim); font-weight: 800; font-size: 13px; padding: 10px 6px; border-radius: 10px; cursor: pointer; }
+  .seg button.active { background: linear-gradient(120deg, var(--mint), #6ee7c8); color: #12132a; }
+  .len-summary { margin-top: 12px; padding: 9px 11px; border-radius: 12px; background: var(--panel-2); border: 1px solid rgba(53,230,171,0.35); font-size: 12.5px; font-weight: 700; color: var(--mint); line-height: 1.4; }
+
   /* Connection message under the Connect buttons */
+  /* ---------------- Fullscreen ----------------
+     The game is designed as a tall phone-shaped column (like the TikTok LIVE frame). In fullscreen on a wide
+     screen we keep that shape: the app stays a centred column no wider than a 9:16 frame at full height, and
+     the spare space on either side is just background. Nothing is stretched or scaled out of proportion.
+     On a phone / portrait tablet the column is already narrower than the screen, so it simply fills it. */
+  html.is-fs { --fs-w: min(100vw, calc(var(--vh) * 56.25)); }
+  html.is-fs #app { width: var(--fs-w); margin: 0 auto; box-shadow: 0 0 0 1px var(--line), 0 0 60px rgba(0,0,0,0.55); }
+  html.is-fs .sheet { left: calc(50% - var(--fs-w) / 2); right: calc(50% - var(--fs-w) / 2); }
+  .key-warn { margin-top: 12px; padding: 9px 11px; border-radius: 12px; background: rgba(255,95,109,0.12); border: 1px solid rgba(255,95,109,0.45); color: var(--danger); font-size: 12.5px; font-weight: 700; line-height: 1.4; }
+  .key-warn[hidden] { display: none; }
   .conn-status { margin-top: 12px; padding: 9px 11px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 700; color: var(--text-dim); line-height: 1.4; }
   .conn-status.connected { color: var(--mint); border-color: rgba(53,230,171,0.4); }
   .conn-status.connecting { color: var(--gold); border-color: rgba(255,203,71,0.4); }
@@ -298,11 +337,15 @@
 
   <header>
     <div class="brand">
-      <div class="brand-badge">🔣</div>
-      <h1>Symble Live</h1>
+      <div class="brand-badge">🌀</div>
+      <h1>TWISTLE</h1>
     </div>
     <div class="header-right">
       <span class="status-pill"><span class="status-dot" id="statusDot"></span><span id="statusText">Offline</span></span>
+      <button class="icon-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen" hidden>
+        <svg class="fs-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        <svg class="fs-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+      </button>
       <button class="icon-btn" id="rulesBtn" title="How to play" aria-label="How to play">?</button>
       <button class="icon-btn" id="settingsBtn" title="Host Controls & Settings" aria-label="Host controls">⚙️</button>
     </div>
@@ -314,7 +357,7 @@
       <div class="confetti" id="confettiWrap"></div>
 
       <div class="meta-row">
-        <span class="round-chip"><span id="roundLabel">Symble</span><span class="sub" id="roundSub"></span></span>
+        <span class="round-chip"><span id="roundLabel">TWISTLE</span><span class="sub" id="roundSub"></span></span>
         <span class="guess-badge" id="guessBadge" hidden><span></span></span>
       </div>
 
@@ -346,14 +389,14 @@
     </div>
     <div class="tab-scroll">
       <div class="rules-body">
-        <p>Guess the secret <strong>5-letter word</strong>. Each round uses <strong>3 random symbols</strong> that always look very different from each other, and each one secretly means something different. You have to work out which is which.</p>
+        <p>Guess the secret <strong>word</strong> (the host chooses how long, from 4 to 20 letters). Each round uses <strong>3 random symbols</strong> that always look very different from each other, and each one secretly means something different. You have to work out which is which.</p>
         <div class="rules-key" id="rulesKey"></div>
-        <p>Here's the twist: the symbols line up with the letters of the <strong>secret word</strong>, not with the letters you guessed. Symbol 1 is about the secret word's 1st letter, symbol 2 about its 2nd letter, and so on.</p>
+        <p>Here's the twist: the symbols line up with the letters of the <strong>secret word</strong>, not with the letters you guessed. Symbol 1 is about the secret word's 1st letter, symbol 2 about its 2nd letter, and so on. Every letter of the word gets its own symbol.</p>
         <p><strong>Example:</strong> the secret word is SHAKE and the guess is THICK.</p>
         <div class="rules-demo" id="rulesDemo"></div>
         <p>The 2nd symbol says the secret's <strong>H</strong> is in your guess in the right spot. The 4th says the secret's <strong>K</strong> is in your guess but in the wrong spot. The other three say S, A and E aren't in THICK at all.</p>
         <p><strong>Repeated letters:</strong> if you guess only one copy of a doubled letter and put it in the wrong spot, the <em>first</em> matching letter of the secret word gets the "wrong spot" symbol. If it's in the right spot, only that one gets "right spot" and you learn nothing about the other copy.</p>
-        <p><strong>Playing in chat:</strong> type any 5-letter word. If it's valid and nobody's guessed it yet this round, it goes straight onto the board with its symbols — no vote, no waiting. Anyone who types the secret word wins the round straight away, and there's no timer or limit on how many guesses the board can hold, so keep trying!</p>
+        <p><strong>Playing in chat:</strong> type any real word that has the same number of letters as the secret word. If it's valid and nobody's guessed it yet this round, it goes straight onto the board with its symbols — no vote, no waiting. Anyone who types the secret word wins the round straight away, and there's no timer or limit on how many guesses the board can hold, so keep trying!</p>
         <p>When the round ends, the tiles flip to show their colours, and the symbols' meanings are revealed.</p>
       </div>
     </div>
@@ -380,14 +423,13 @@
         <div class="section-title">TikTok LIVE connection</div>
         <label>TikTok Username (without @)</label>
         <input type="text" id="tiktokUsername" placeholder="e.g. officialgeilegisela" />
-        <label>Euler Stream Signing API Key</label>
-        <input type="text" id="signApiKey" placeholder="Paste your eulerstream.com API key" />
         <div class="row">
           <button class="primary" id="connectBtn">Connect to LIVE</button>
           <button class="secondary danger" id="disconnectBtn">Disconnect</button>
         </div>
         <div class="conn-status" id="connStatus">Not connected.</div>
-        <div class="small-note">Get a free key at eulerstream.com. Your stream must be LIVE before connecting. This panel is open to anyone with the page link — there's no host password.</div>
+        <div class="key-warn" id="keyWarn" hidden>The server has no SIGN_API_KEY yet. Add it under Render → Environment and redeploy, or connecting to LIVE will fail.</div>
+        <div class="small-note">Your stream must be LIVE before connecting. The signing key is stored on the server, so there's nothing to paste here. This panel is open to anyone with the page link — there's no host password.</div>
       </div>
 
       <div class="tab-content" data-tab="game">
@@ -400,7 +442,25 @@
           <button class="secondary" id="revealAnswerBtn">👁 Reveal Answer</button>
           <button class="secondary" id="skipRoundBtn">⏭ Skip Round</button>
         </div>
-        <div class="small-note">There's no timer and no limit on guesses — a round runs until someone solves it, or you reveal the answer or skip it here.</div>
+        <div class="section-title" style="margin-top:22px">Word length</div>
+        <div class="seg" id="lenMode">
+          <button type="button" data-mode="fixed" class="active">Fixed length</button>
+          <button type="button" data-mode="random">Random range</button>
+        </div>
+        <div id="lenFixedBox">
+          <label for="lenFixed">Every round uses a secret word of</label>
+          <select id="lenFixed"></select>
+        </div>
+        <div id="lenRangeBox" hidden>
+          <div class="row">
+            <div><label for="lenMin">Shortest</label><select id="lenMin"></select></div>
+            <div><label for="lenMax">Longest</label><select id="lenMax"></select></div>
+          </div>
+        </div>
+        <div class="len-summary" id="lenSummary"></div>
+        <div class="small-note">Changes apply from the next round — tap <strong>Skip Round</strong> to switch right away. The tiles and symbols resize automatically so every length stays easy to read.</div>
+
+        <div class="small-note" style="margin-top:18px">There's no timer and no limit on guesses — a round runs until someone solves it, or you reveal the answer or skip it here.</div>
       </div>
 
       <div class="tab-content" data-tab="message">
@@ -408,15 +468,20 @@
         <label>Name (optional)</label>
         <input type="text" id="hostMsgName" placeholder="Host" />
         <label>Message / Guess</label>
-        <input type="text" id="hostMsgText" placeholder="Type a 5-letter word..." />
+        <input type="text" id="hostMsgText" placeholder="Type a guess..." />
         <button class="primary" id="sendHostMsgBtn">Send</button>
-        <div class="small-note">This feeds directly into the game, just like a real TikTok comment: a fresh, valid 5-letter word goes straight onto the board, and the secret word wins the round.</div>
+        <div class="error-msg" id="hostMsgResult"></div>
+        <div class="small-note">This feeds directly into the game, just like a real TikTok comment: a fresh, valid word of the right length goes straight onto the board, and the secret word wins the round.</div>
+
+        <div class="section-title" style="margin-top:22px">Recent rejected guesses</div>
+        <div class="small-note">Every guess that doesn't make it onto the board - from chat, this box, or test mode - shows up here with the reason: not a recognized word, or it conflicts with a word already guessed this round.</div>
+        <div id="rejectedFeed" class="rejected-feed"><div class="small-note">Nothing rejected yet.</div></div>
       </div>
 
       <div class="tab-content" data-tab="words">
         <div class="section-title">Add a secret word</div>
-        <label>Word (exactly 5 letters)</label>
-        <input type="text" id="newAnswer" maxlength="5" placeholder="e.g. VIBES" autocomplete="off" />
+        <label>Word (4 to 20 letters)</label>
+        <input type="text" id="newAnswer" maxlength="20" placeholder="e.g. VIBES" autocomplete="off" />
         <button class="primary" id="addWordBtn">Add to Word Bank</button>
         <div class="error-msg" id="addWordError"></div>
         <div class="small-note" id="wordBankNote"></div>
@@ -453,6 +518,41 @@
   setVh();
   window.addEventListener('resize', setVh);
   window.addEventListener('orientationchange', setVh);
+
+  // ---- Fullscreen (enter / leave without stretching - see the "Fullscreen" CSS block) ----
+  const fsRoot = document.documentElement;
+  const fsRequest = fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen;
+  const fsExit = document.exitFullscreen || document.webkitExitFullscreen;
+  const fsActive = () => Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+  function toggleFullscreen() {
+    try {
+      const p = fsActive() ? fsExit.call(document) : fsRequest.call(fsRoot, { navigationUI: 'hide' });
+      if (p && p.catch) p.catch((err) => console.warn('[Twistle] Fullscreen refused:', err && err.message));
+    } catch (err) {
+      console.warn('[Twistle] Fullscreen failed:', err);
+    }
+  }
+  function onFullscreenChange() {
+    const on = fsActive();
+    fsRoot.classList.toggle('is-fs', on);
+    const btn = document.getElementById('fsBtn');
+    if (btn) { btn.title = on ? 'Exit fullscreen' : 'Fullscreen'; btn.setAttribute('aria-label', btn.title); }
+    setVh();
+    // Let the browser finish resizing, then refit the tiles (the grid's ResizeObserver also catches this).
+    requestAnimationFrame(() => { setVh(); window.dispatchEvent(new Event('resize')); });
+  }
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+  if (fsRequest && fsExit) {
+    const fsBtn = document.getElementById('fsBtn');
+    fsBtn.hidden = false; // iPhone Safari has no fullscreen API for pages, so the button stays hidden there
+    fsBtn.addEventListener('click', toggleFullscreen);
+    document.addEventListener('keydown', (e) => {
+      const t = e.target;
+      const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'f' || e.key === 'F')) toggleFullscreen();
+    });
+  }
 
   const socket = io();
   const $ = (id) => document.getElementById(id);
@@ -707,7 +807,7 @@
   function symbolSvg(id) {
     if (!id) return '';
     if (!SYMBOLS[id]) {
-      if (!warnedSymbols.has(id)) { warnedSymbols.add(id); console.warn('[Symble] No artwork for symbol "' + id + '" - showing a placeholder. Is this page out of date?'); }
+      if (!warnedSymbols.has(id)) { warnedSymbols.add(id); console.warn('[Twistle] No artwork for symbol "' + id + '" - showing a placeholder. Is this page out of date?'); }
       id = '_fallback';
     }
     return `<svg viewBox="0 0 64 64" aria-hidden="true"><use href="#sym-${id}"/></svg>`;
@@ -736,8 +836,9 @@
   // ---- Connection status ----
   socket.on('server:config', (cfg) => {
     if (cfg.defaultUsername) $('tiktokUsername').value = cfg.defaultUsername;
+    $('keyWarn').hidden = cfg.hasEnvSignKey !== false;
     const missing = (cfg.symbols || []).filter((id) => !SYMBOLS[id]);
-    if (missing.length) console.warn('[Symble] This page has no artwork for: ' + missing.join(', ') + ' - it is out of date. Replace public/index.html with the newest version.');
+    if (missing.length) console.warn('[Twistle] This page has no artwork for: ' + missing.join(', ') + ' - it is out of date. Replace public/index.html with the newest version.');
   });
   socket.on('tiktok:status', (payload) => {
     const st = ['connected', 'connecting', 'error'].includes(payload.state) ? payload.state : '';
@@ -750,12 +851,92 @@
   socket.on('testMode:status', (enabled) => { $('testModeToggle').checked = enabled; });
 
   // ---------------------------------------------------------------------
+  // Rejected guesses - every guess turned away (dictionary miss, or it
+  // conflicts with a word already on the board this round) shows up here
+  // in real time, whether it came from TikTok chat, the host box, or test mode.
+  // ---------------------------------------------------------------------
+  const REJECTED_FEED_MAX = 25;
+  const rejectedFeed = [];
+  function renderRejectedFeed() {
+    const el = $('rejectedFeed');
+    if (!rejectedFeed.length) { el.innerHTML = '<div class="small-note">Nothing rejected yet.</div>'; return; }
+    el.innerHTML = rejectedFeed.map((r) => {
+      const dupe = r.reason === 'already-played';
+      return `<div class="rejected-row">` +
+        `<div><div class="rr-word">${escapeHtml(r.word)}</div><div class="rr-who">${r.name ? escapeHtml(r.name) : 'viewer'}</div></div>` +
+        `<div class="rr-reason${dupe ? ' dupe' : ''}">${dupe ? 'Already guessed' : 'Not a word'}</div>` +
+        `</div>`;
+    }).join('');
+  }
+  socket.on('game:guessRejected', (info) => {
+    if (!info || !info.word) return;
+    rejectedFeed.unshift(info);
+    if (rejectedFeed.length > REJECTED_FEED_MAX) rejectedFeed.length = REJECTED_FEED_MAX;
+    renderRejectedFeed();
+  });
+
+  // ---------------------------------------------------------------------
   // Board
   // ---------------------------------------------------------------------
   function scrollToLatest() {
     const m = document.querySelector('main');
     requestAnimationFrame(() => m.scrollTo({ top: m.scrollHeight, behavior: 'smooth' }));
   }
+  // ---- Adaptive layout: pick tile size + arrangement from the word length and the width we have ----
+  // Smallest tile (px) we accept for the letters-beside-symbols layout. Wide windows demand bigger tiles
+  // (a wide capture gets shrunk onto viewers' phones); narrow phones settle for 26px.
+  const sideMin = (W) => Math.min(44, Math.max(26, W * 0.055));
+  const STACK_MIN = 30;  // smallest tile (px) before a stacked line is wrapped onto another line
+  const CELL_CAP = 72;   // biggest tile (px) so short words don't look oversized
+  const SIDE_GAP = 16;   // space between the letters and the symbols in the side layout
+  const px = (n) => Math.floor(n * 10) / 10;
+
+  /** Fit `n` equal cells on as few lines as possible while keeping each at least STACK_MIN wide. */
+  function fitLine(n, W, cap, gap) {
+    let lines = 1, cols = n, cell;
+    for (;;) {
+      cols = Math.ceil(n / lines);
+      cell = (W - (cols - 1) * gap) / cols;
+      if (cell >= STACK_MIN || cols <= 3 || lines >= 8) break;
+      lines++;
+    }
+    return { cell: px(Math.max(14, Math.min(cap, cell))), cols };
+  }
+
+  function computeLayout(n, W) {
+    let gap = 4;
+    let side = (W - SIDE_GAP - (2 * n - 2) * gap) / (2 * n);
+    if (side >= sideMin(W)) {
+      if (side >= 44) { gap = 6; side = (W - SIDE_GAP - (2 * n - 2) * gap) / (2 * n); }
+      const cell = px(Math.min(CELL_CAP, side));
+      return { mode: 'side', cell, cols: n, gap, width: Math.ceil(2 * n * cell + (2 * n - 2) * gap + SIDE_GAP) };
+    }
+    let f = fitLine(n, W, 56, gap);
+    if (f.cell >= 44) { gap = 6; f = fitLine(n, W, 56, gap); }
+    return { mode: 'stack', cell: f.cell, cols: f.cols, gap, width: Math.ceil(f.cols * f.cell + (f.cols - 1) * gap) };
+  }
+
+  let layoutN = 5;
+  function applyLayout(n) {
+    if (n) layoutN = n;
+    const W = gridEl.clientWidth;
+    if (W < 120) return; // page not laid out yet (or hidden)
+    const L = computeLayout(layoutN, W);
+    gridEl.style.setProperty('--cell', L.cell + 'px');
+    gridEl.style.setProperty('--cols', L.cols);
+    gridEl.style.setProperty('--gap', L.gap + 'px');
+    gridEl.classList.toggle('mode-side', L.mode === 'side');
+    gridEl.classList.toggle('mode-stack', L.mode === 'stack');
+    $('board').style.setProperty('--content-w', L.width + 'px');
+    // The revealed answer gets its own comfortable size (and wraps for very long words).
+    const A = fitLine(layoutN, W, 60, 5);
+    const at = $('answerTiles');
+    at.style.setProperty('--cell', A.cell + 'px');
+    at.style.setProperty('--cols', A.cols);
+  }
+  if (window.ResizeObserver) new ResizeObserver(() => applyLayout()).observe(gridEl);
+  window.addEventListener('resize', () => applyLayout());
+
   let lastGridSig = '';
   let lastGridRound = null;
   let lastRowCount = 0;
@@ -785,22 +966,24 @@
     let html = '';
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
+      const n = row.word.length;
+      const step = Math.min(90, Math.floor(1400 / n)); // keep the flip quick even for 20 letters
       const isNew = r >= prevCount;
       let tiles = '';
       let syms = '';
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < n; i++) {
         const ch = escapeHtml(row.word[i]);
         let cls = 'tile filled';
         let style = `--i:${i};`;
         if (row.states) {
           const col = stateColors(row.states[i], state.legend);
           cls += ' flip';
-          style += `--d:${i * 90}ms;--to-border:${col.border};--to-bg:${col.bg};`;
+          style += `--d:${i * step}ms;--to-border:${col.border};--to-bg:${col.bg};`;
         }
         tiles += `<div class="${cls}" style="${style}">${ch}</div>`;
         syms += `<div class="sym" style="--i:${i}">${symbolSvg(row.symbols[i])}</div>`;
       }
-      html += `<div class="grow${isNew ? ' new' : ''}">${tiles}<div class="gspace"></div>${syms}</div>`;
+      html += `<div class="grow${isNew ? ' new' : ''}"><div class="lets">${tiles}</div><div class="syms">${syms}</div></div>`;
     }
     gridEl.innerHTML = html;
     if (rows.length > prevCount || (firstRender && rows.length)) scrollToLatest();
@@ -819,9 +1002,10 @@
       return;
     }
     if (state.status === 'reveal') { hint.innerHTML = ''; return; }
+    const n = state.wordLength;
     hint.innerHTML = (state.rows || []).length === 0
-      ? 'Type a <strong>5-letter word</strong> in chat — a valid one goes straight onto the board. Type the <strong>secret word</strong> to win!'
-      : 'Keep guessing! Any fresh <strong>5-letter word</strong> lands on the board. Type the <strong>secret word</strong> to win!';
+      ? `Type a <strong>${n}-letter word</strong> in chat — a valid one goes straight onto the board. Type the <strong>secret word</strong> to win!`
+      : `Keep guessing! Any fresh <strong>${n}-letter word</strong> lands on the board. Type the <strong>secret word</strong> to win!`;
   }
 
   let confettiRound = null;
@@ -875,15 +1059,21 @@
     if (!state) return;
     lastState = state;
 
+    const cfg = state.config || { mode: 'fixed', fixed: state.wordLength || 5, min: 4, max: 8 };
+    const lengthText = state.status === 'idle'
+      ? (cfg.mode === 'fixed' || cfg.min === cfg.max ? `${cfg.mode === 'fixed' ? cfg.fixed : cfg.min} letters` : `random ${cfg.min}–${cfg.max} letters`)
+      : `${state.wordLength} letters`;
     if (state.status === 'idle') {
-      $('roundLabel').textContent = 'Symble';
-      $('roundSub').textContent = 'waiting to start';
+      $('roundLabel').textContent = 'TWISTLE';
+      $('roundSub').textContent = 'waiting to start · ' + lengthText;
     } else {
       $('roundLabel').textContent = 'Round #' + state.roundNumber;
-      $('roundSub').textContent = '';
+      $('roundSub').textContent = '· ' + lengthText;
     }
-    if (state.wordBankSize) $('wordBankNote').textContent = 'Word bank: ' + state.wordBankSize + ' secret words. Custom words are added on top and kept on the server.';
+    if (state.wordBankSize) $('wordBankNote').textContent = 'Word bank: ' + state.wordBankSize + ' secret words (4–20 letters). Custom words are added on top and kept on the server.';
+    syncLengthControls(state.config, state.lengthCounts);
 
+    applyLayout(state.wordLength || (state.rows && state.rows[0] && state.rows[0].word.length) || (cfg.mode === 'fixed' ? cfg.fixed : 5));
     renderGrid(state);
     renderTried(state);
     renderHint(state);
@@ -927,8 +1117,12 @@
     const secret = 'SHAKE';
     const syms = ['cloud', 'clover', 'cloud', 'heart', 'cloud'];
     $('rulesDemo').innerHTML =
-      `<div class="grow">${guess.split('').map((ch) => `<div class="tile filled">${ch}</div>`).join('')}<div class="gspace"></div>${syms.map((s) => `<div class="sym">${symbolSvg(s)}</div>`).join('')}</div>` +
-      `<div class="grow" style="margin-top:6px"><div class="cap">the secret word, hidden in the real game</div>${secret.split('').map((ch) => `<div class="sl">${ch}</div>`).join('')}</div>`;
+      `<div class="grid mode-side">` +
+      `<div class="grow"><div class="lets">${guess.split('').map((ch) => `<div class="tile filled">${ch}</div>`).join('')}</div>` +
+      `<div class="syms">${syms.map((sy) => `<div class="sym">${symbolSvg(sy)}</div>`).join('')}</div></div>` +
+      `<div class="grow"><div class="cap">the secret word, hidden in the real game</div>` +
+      `<div class="syms">${secret.split('').map((ch) => `<div class="sl">${ch}</div>`).join('')}</div></div>` +
+      `</div>`;
     $('rulesKey').innerHTML = ['Right spot: that letter is in your guess, in the same position', 'Wrong spot: that letter is in your guess, but somewhere else', 'Not in your guess: that letter (or a spare copy of it) isn\'t in your guess']
       .map((t) => `<div><span class="q">?</span><span>${t}</span></div>`).join('');
   })();
@@ -937,7 +1131,7 @@
   // Host actions (no auth needed)
   // ---------------------------------------------------------------------
   $('connectBtn').addEventListener('click', () => {
-    socket.emit('host:connectTikTok', { username: $('tiktokUsername').value, signApiKey: $('signApiKey').value });
+    socket.emit('host:connectTikTok', { username: $('tiktokUsername').value });
   });
   $('disconnectBtn').addEventListener('click', () => socket.emit('host:disconnectTikTok'));
   $('startGameBtn').addEventListener('click', () => socket.emit('host:startGame'));
@@ -948,7 +1142,14 @@
   $('sendHostMsgBtn').addEventListener('click', () => {
     const text = $('hostMsgText').value;
     if (!text.trim()) return;
-    socket.emit('host:sendMessage', { name: $('hostMsgName').value, text });
+    socket.emit('host:sendMessage', { name: $('hostMsgName').value, text }, (res) => {
+      const el = $('hostMsgResult');
+      if (!res) return;
+      if (res.outcome === 'correct') { el.className = 'error-msg ok'; el.textContent = '🎉 That was the secret word!'; }
+      else if (res.outcome === 'added') { el.className = 'error-msg ok'; el.textContent = `✅ "${res.word}" added to the board.`; }
+      else if (res.outcome === 'rejected') { el.className = 'error-msg'; el.textContent = `❌ ${res.message}`; }
+      else { el.className = 'error-msg'; el.style.color = 'var(--text-faint)'; el.textContent = 'Sent as ordinary chat (not a guess).'; }
+    });
     $('hostMsgText').value = '';
   });
   $('hostMsgText').addEventListener('keydown', (e) => {
@@ -968,6 +1169,52 @@
       }
     });
   });
+
+  // ---- Word length (fixed, or a random range) ----
+  const lenSelects = { fixed: $('lenFixed'), min: $('lenMin'), max: $('lenMax') };
+  for (let n = 4; n <= 20; n++) Object.values(lenSelects).forEach((sel) => sel.add(new Option(n + ' letters', n)));
+  let lenConfig = { mode: 'fixed', fixed: 5, min: 4, max: 8 };
+  let lenCounts = {};
+
+  function paintLengthControls() {
+    document.querySelectorAll('#lenMode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === lenConfig.mode));
+    $('lenFixedBox').hidden = lenConfig.mode !== 'fixed';
+    $('lenRangeBox').hidden = lenConfig.mode !== 'random';
+    lenSelects.fixed.value = lenConfig.fixed;
+    lenSelects.min.value = lenConfig.min;
+    lenSelects.max.value = lenConfig.max;
+    // Word counts are shown in the Fixed dropdown only (the range dropdowns are narrower).
+    [...lenSelects.fixed.options].forEach((o) => { o.textContent = o.value + ' letters' + (lenCounts[o.value] ? ' · ' + lenCounts[o.value] + ' words' : ''); });
+    const words = (n) => (lenCounts[n] ? ` (${lenCounts[n]} words in the bank)` : '');
+    $('lenSummary').textContent = lenConfig.mode === 'fixed'
+      ? `Every round: a ${lenConfig.fixed}-letter word${words(lenConfig.fixed)}.`
+      : lenConfig.min === lenConfig.max
+        ? `Every round: a ${lenConfig.min}-letter word${words(lenConfig.min)}.`
+        : `Each round picks a random length from ${lenConfig.min} to ${lenConfig.max} letters.`;
+  }
+  let lenSig = '';
+  function syncLengthControls(cfg, counts) {
+    // Game state arrives with every guess; only repaint when the setting really changed so an open dropdown isn't disturbed.
+    const sig = JSON.stringify([cfg, counts]);
+    if (sig === lenSig) return;
+    lenSig = sig;
+    if (counts) lenCounts = counts;
+    if (cfg) lenConfig = { mode: cfg.mode, fixed: cfg.fixed, min: cfg.min, max: cfg.max };
+    paintLengthControls();
+  }
+  function sendLength(patch) {
+    lenConfig = { ...lenConfig, ...patch };
+    if (lenConfig.min > lenConfig.max) {           // keep the range the right way round
+      if ('min' in patch) lenConfig.max = lenConfig.min; else lenConfig.min = lenConfig.max;
+    }
+    paintLengthControls();
+    socket.emit('host:setLength', lenConfig);
+  }
+  document.querySelectorAll('#lenMode button').forEach((b) => b.addEventListener('click', () => sendLength({ mode: b.dataset.mode })));
+  lenSelects.fixed.addEventListener('change', () => sendLength({ fixed: Number(lenSelects.fixed.value) }));
+  lenSelects.min.addEventListener('change', () => sendLength({ min: Number(lenSelects.min.value) }));
+  lenSelects.max.addEventListener('change', () => sendLength({ max: Number(lenSelects.max.value) }));
+  paintLengthControls();
 
   $('testModeToggle').addEventListener('change', (e) => socket.emit('host:testMode', e.target.checked));
 })();

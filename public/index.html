@@ -293,6 +293,13 @@
   input:checked + .slider:before { transform: translateX(18px); }
   .small-note { font-size: 11.5px; color: var(--text-faint); margin-top: 8px; line-height: 1.4; }
   .error-msg { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 14px; font-weight: 700; }
+  .error-msg.ok { color: var(--mint); }
+  .rejected-feed { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+  .rejected-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; }
+  .rejected-row .rr-word { font-weight: 800; letter-spacing: 0.03em; }
+  .rejected-row .rr-reason { color: var(--danger); font-size: 11px; font-weight: 700; text-align: right; }
+  .rejected-row .rr-reason.dupe { color: var(--gold); }
+  .rejected-row .rr-who { color: var(--text-faint); font-size: 10.5px; }
   .section-title { font-size: 12.5px; font-weight: 800; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; margin: 14px 0 8px; }
   .section-title:first-child { margin-top: 2px; }
 
@@ -463,7 +470,12 @@
         <label>Message / Guess</label>
         <input type="text" id="hostMsgText" placeholder="Type a guess..." />
         <button class="primary" id="sendHostMsgBtn">Send</button>
+        <div class="error-msg" id="hostMsgResult"></div>
         <div class="small-note">This feeds directly into the game, just like a real TikTok comment: a fresh, valid word of the right length goes straight onto the board, and the secret word wins the round.</div>
+
+        <div class="section-title" style="margin-top:22px">Recent rejected guesses</div>
+        <div class="small-note">Every guess that doesn't make it onto the board - from chat, this box, or test mode - shows up here with the reason: not a recognized word, or it conflicts with a word already guessed this round.</div>
+        <div id="rejectedFeed" class="rejected-feed"><div class="small-note">Nothing rejected yet.</div></div>
       </div>
 
       <div class="tab-content" data-tab="words">
@@ -839,6 +851,31 @@
   socket.on('testMode:status', (enabled) => { $('testModeToggle').checked = enabled; });
 
   // ---------------------------------------------------------------------
+  // Rejected guesses - every guess turned away (dictionary miss, or it
+  // conflicts with a word already on the board this round) shows up here
+  // in real time, whether it came from TikTok chat, the host box, or test mode.
+  // ---------------------------------------------------------------------
+  const REJECTED_FEED_MAX = 25;
+  const rejectedFeed = [];
+  function renderRejectedFeed() {
+    const el = $('rejectedFeed');
+    if (!rejectedFeed.length) { el.innerHTML = '<div class="small-note">Nothing rejected yet.</div>'; return; }
+    el.innerHTML = rejectedFeed.map((r) => {
+      const dupe = r.reason === 'already-played';
+      return `<div class="rejected-row">` +
+        `<div><div class="rr-word">${escapeHtml(r.word)}</div><div class="rr-who">${r.name ? escapeHtml(r.name) : 'viewer'}</div></div>` +
+        `<div class="rr-reason${dupe ? ' dupe' : ''}">${dupe ? 'Already guessed' : 'Not a word'}</div>` +
+        `</div>`;
+    }).join('');
+  }
+  socket.on('game:guessRejected', (info) => {
+    if (!info || !info.word) return;
+    rejectedFeed.unshift(info);
+    if (rejectedFeed.length > REJECTED_FEED_MAX) rejectedFeed.length = REJECTED_FEED_MAX;
+    renderRejectedFeed();
+  });
+
+  // ---------------------------------------------------------------------
   // Board
   // ---------------------------------------------------------------------
   function scrollToLatest() {
@@ -1105,7 +1142,14 @@
   $('sendHostMsgBtn').addEventListener('click', () => {
     const text = $('hostMsgText').value;
     if (!text.trim()) return;
-    socket.emit('host:sendMessage', { name: $('hostMsgName').value, text });
+    socket.emit('host:sendMessage', { name: $('hostMsgName').value, text }, (res) => {
+      const el = $('hostMsgResult');
+      if (!res) return;
+      if (res.outcome === 'correct') { el.className = 'error-msg ok'; el.textContent = '🎉 That was the secret word!'; }
+      else if (res.outcome === 'added') { el.className = 'error-msg ok'; el.textContent = `✅ "${res.word}" added to the board.`; }
+      else if (res.outcome === 'rejected') { el.className = 'error-msg'; el.textContent = `❌ ${res.message}`; }
+      else { el.className = 'error-msg'; el.style.color = 'var(--text-faint)'; el.textContent = 'Sent as ordinary chat (not a guess).'; }
+    });
     $('hostMsgText').value = '';
   });
   $('hostMsgText').addEventListener('keydown', (e) => {

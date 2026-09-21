@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { TikTokLiveConnection, WebcastEvent, ControlEvent } from 'tiktok-live-connector';
-import { GameEngine, SYMBOL_POOL, MIN_LENGTH, MAX_LENGTH, normalizeLengthConfig } from './gameEngine.js';
+import { GameEngine, SYMBOL_POOL, MIN_LENGTH, MAX_LENGTH, normalizeLengthConfig, REJECTION_REASONS } from './gameEngine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -268,6 +268,12 @@ async function disconnectFromTikTok() {
 // ---------------------------------------------------------------------------
 engine.on('stateChanged', safe('emit:stateChanged', (state) => io.emit('game:state', state)));
 engine.on('wordBankUpdated', safe('emit:wordBank', (count) => io.emit('game:wordBankSize', count)));
+// Every guess that gets turned away (from TikTok chat, the host message box, or
+// test mode) is reported here with a reason, so Host Controls can show the host
+// WHY it didn't land - never just a silent drop. See REJECTION_REASONS.
+engine.on('guessRejected', safe('emit:guessRejected', (info) => {
+  io.emit('game:guessRejected', { ...info, message: REJECTION_REASONS[info.reason] || 'Rejected.' });
+}));
 // Remember the word-length setting so it survives a restart (best effort - Render's free tier wipes files on redeploy).
 engine.on('configChanged', safe('save:settings', (config) => {
   try {
@@ -356,12 +362,28 @@ io.on('connection', (socket) => {
     engine.skipRound();
   }));
 
-  socket.on('host:sendMessage', safe('socket:sendMessage', ({ name, text } = {}) => {
+  socket.on('host:sendMessage', safe('socket:sendMessage', ({ name, text } = {}, ack) => {
     const who = String(name || 'Host').trim() || 'Host';
     const clean = String(text || '').trim();
     if (!clean) return;
 
-    engine.handleGuess(who, who, clean);
+    const result = engine.handleGuess(who, who, clean);
+    // Tell the sender straight away what happened to their own message - added,
+    // correct, rejected (and why), or just ordinary chat that wasn't a guess.
+    if (typeof ack === 'function') {
+      if (!result) ack({ ok: true, outcome: 'chatter' });
+      else if (result.correct) ack({ ok: true, outcome: 'correct' });
+      else if (result.added) ack({ ok: true, outcome: 'added', word: result.word });
+      else if (result.rejected) {
+        ack({
+          ok: false,
+          outcome: 'rejected',
+          reason: result.rejected,
+          word: result.word,
+          message: REJECTION_REASONS[result.rejected] || 'Rejected.',
+        });
+      }
+    }
   }));
 
   socket.on('host:addWord', safe('socket:addWord', (entry, ack) => {
