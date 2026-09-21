@@ -8,7 +8,9 @@
     "node": ">=18.17.0"
   },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build:words": "node scripts/build-words.js",
+    "postinstall": "node scripts/build-words.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

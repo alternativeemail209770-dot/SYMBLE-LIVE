@@ -66,6 +66,8 @@ twistle-live-game/
 ├── gameEngine.js         <- the Twistle rules: word lengths, symbols, rows, scoring
 ├── words.json             <- the secret words: ~5,900 everyday words, 4 to 20 letters long
 ├── guesses.json           <- every other word viewers may guess (~105,000, 4 to 20 letters)
+├── scripts/
+│   └── build-words.js       <- downloads big public word lists at install time -> guesses-extra.json (400,000+ goal)
 ├── package.json           <- tells the server what software it needs
 ├── .env.example            <- template for your settings
 ├── .gitignore
@@ -143,11 +145,11 @@ You now have a GitHub repository Render can deploy from.
    - **Start Command**: `npm start`
    - **Instance Type**: Free is fine to start
 5. Scroll to **Environment Variables** and add these (click "Add Environment
-   Variable" for each) — both are optional:
+   Variable" for each) — `SIGN_API_KEY` is needed to connect to TikTok LIVE (not for Test Mode); `DEFAULT_TIKTOK_USERNAME` is optional:
 
    | Key | Value |
    |---|---|
-   | `SIGN_API_KEY` | paste your Euler Stream key from Step 1 (optional — you can also paste it directly in the app instead) |
+   | `SIGN_API_KEY` | **required for going LIVE** — paste your Euler Stream key from Step 1. The game page never asks for it; it is read only from here |
    | `DEFAULT_TIKTOK_USERNAME` | your TikTok username without the @ (optional) |
 
 6. Click **Create Web Service**. Render will install everything and start
@@ -206,8 +208,8 @@ When you're happy, turn Test Mode back **off**.
 
 1. Start your TikTok LIVE stream from your phone as normal.
 2. Back in the game page, open **Host Controls → Connect**.
-3. Enter your **TikTok username** (no @) and your **Euler Stream API key**
-   (skip the key field if you already set `SIGN_API_KEY` on Render).
+3. Enter your **TikTok username** (no @). There is no key field: the server uses the
+   `SIGN_API_KEY` you set on Render.
 4. Tap **Connect to LIVE**. The status dot at the top turns green once
    connected. The game will automatically retry the connection up to 3
    times if it fails before showing an error.
@@ -224,6 +226,27 @@ When you're happy, turn Test Mode back **off**.
    seconds later.
 
 ---
+
+## The big dictionary (400,000+ accepted guesses)
+
+`npm install` (which Render runs on every deploy) also runs `scripts/build-words.js`.
+It downloads several public English word lists (dwyl words_alpha, Collins SOWPODS, ENABLE),
+merges them with `guesses.json`, removes junk and a baseline list of profanity/slurs/explicit
+terms, and saves the result as `guesses-extra.json`, which the server loads automatically.
+Secret words still come only from `words.json`, so answers stay everyday words.
+
+- Open the Render **Logs** tab after a deploy and look for `[WORDS] Total accepted guesses: ...`.
+  It tells you whether the 400,000 target was reached.
+- If a download fails, the game still starts with the lists it has (never less than `guesses.json`).
+- To add more sources, set an environment variable `WORD_SOURCES` on Render to one or more
+  comma-separated URLs of plain-text lists (one word per line).
+- To block extra words, add a `blocklist.txt` next to `server.js` (one word per line).
+
+## Fullscreen
+
+The **⛶** button in the top bar (or the **F** key) enters and leaves fullscreen. The game keeps its
+tall phone-shaped column, so on a wide screen you get bars on the sides instead of a stretched board.
+iPhone Safari doesn't allow fullscreen for web pages, so the button is hidden there.
 
 ## Customizing the game
 
@@ -278,7 +301,7 @@ the game itself is fine and the problem is the TikTok connection.
 
 **The Connect tab shows "error" after 3 attempts.**
 Usually means either the username is wrong, you're not currently live, or
-the Euler Stream key is missing/invalid. Re-check Step 7 and try again —
+the `SIGN_API_KEY` on Render is missing/invalid (the Connect tab shows a red note if the server has no key at all). Re-check Step 7 and try again —
 the game always retries automatically before giving up.
 
 **A viewer's guess didn't appear on the board.**

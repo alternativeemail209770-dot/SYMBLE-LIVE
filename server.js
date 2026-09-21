@@ -40,7 +40,9 @@ function safe(label, fn) {
 // at all, put it behind Render's own access controls or don't share the URL.
 const PORT = process.env.PORT || 3000;
 const DEFAULT_TIKTOK_USERNAME = process.env.DEFAULT_TIKTOK_USERNAME || '';
-const ENV_SIGN_API_KEY = process.env.SIGN_API_KEY || '';
+// The Euler Stream signing key lives ONLY in the server's environment (Render -> Environment -> SIGN_API_KEY).
+// Hosts never type it in the browser.
+const ENV_SIGN_API_KEY = (process.env.SIGN_API_KEY || '').trim();
 
 const app = express();
 
@@ -84,6 +86,7 @@ const io = new SocketIOServer(server, { cors: { origin: '*' } });
 // ---------------------------------------------------------------------------
 const WORDS_PATH = path.join(__dirname, 'words.json');
 const GUESSES_PATH = path.join(__dirname, 'guesses.json');
+const EXTRA_GUESSES_PATH = path.join(__dirname, 'guesses-extra.json');
 const CUSTOM_WORDS_PATH = path.join(__dirname, 'words-custom.json');
 const SETTINGS_PATH = path.join(__dirname, 'settings.json'); // remembers the host's word-length setting
 
@@ -100,9 +103,11 @@ function loadJsonSafe(filePath, fallback) {
 
 const builtInWords = loadJsonSafe(WORDS_PATH, []);
 const validGuesses = loadJsonSafe(GUESSES_PATH, []);
+// Big extra dictionary, generated at install time by scripts/build-words.js (see README). Optional.
+const extraGuesses = loadJsonSafe(EXTRA_GUESSES_PATH, []);
 const customWords = loadJsonSafe(CUSTOM_WORDS_PATH, []);
 const savedSettings = loadJsonSafe(SETTINGS_PATH, {});
-const engine = new GameEngine([...builtInWords, ...customWords], validGuesses, savedSettings.lengthConfig || {});
+const engine = new GameEngine([...builtInWords, ...customWords], [...validGuesses, ...extraGuesses], savedSettings.lengthConfig || {});
 console.log(`[WORDS] ${engine.wordBankSize} secret words, ${engine.valid.size} accepted guesses. Word length: ${JSON.stringify(engine.config)}`);
 
 // ---------------------------------------------------------------------------
@@ -184,7 +189,7 @@ function wireConnectionEvents(connection) {
   );
 }
 
-async function connectToTikTok(username, signApiKey) {
+async function connectToTikTok(username) {
   const cleanUsername = String(username || '').replace(/^@/, '').trim();
   if (!cleanUsername) {
     io.emit('tiktok:status', { state: 'error', message: 'Please enter a TikTok username.' });
@@ -200,11 +205,11 @@ async function connectToTikTok(username, signApiKey) {
     tiktokConnection = null;
   }
 
-  const apiKey = signApiKey || ENV_SIGN_API_KEY;
+  const apiKey = ENV_SIGN_API_KEY;
   if (!apiKey) {
     io.emit('tiktok:status', {
       state: 'error',
-      message: 'A Euler Stream signing API key is required. Paste it into the Host Controls panel.',
+      message: 'The server has no SIGN_API_KEY set. Add it under Render -> Environment, then redeploy.',
     });
     return;
   }
@@ -234,7 +239,7 @@ async function connectToTikTok(username, signApiKey) {
         io.emit('tiktok:status', {
           state: 'error',
           message:
-            'Could not connect after 3 attempts. Make sure the username is correct, the account is currently LIVE, and your signing key is valid.',
+            'Could not connect after 3 attempts. Make sure the username is correct, the account is currently LIVE, and the SIGN_API_KEY set on Render is valid.',
         });
         return;
       }
@@ -322,8 +327,8 @@ io.on('connection', (socket) => {
     maxLength: MAX_LENGTH,
   });
 
-  socket.on('host:connectTikTok', safe('socket:connectTikTok', ({ username, signApiKey } = {}) => {
-    connectToTikTok(username, signApiKey);
+  socket.on('host:connectTikTok', safe('socket:connectTikTok', ({ username } = {}) => {
+    connectToTikTok(username);
   }));
 
   socket.on('host:disconnectTikTok', safe('socket:disconnectTikTok', () => {
