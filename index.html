@@ -109,14 +109,14 @@
     padding: 6px 12px; border-radius: 999px;
   }
   .round-chip .sub { color: var(--text-dim); font-weight: 700; }
-  .points-badge {
+  .guess-badge {
     display: inline-flex; align-items: center; gap: 5px;
     font-size: 12.5px; color: #1a1c1a; font-weight: 800;
     background: linear-gradient(160deg, #ffe27a, var(--gold));
     padding: 5px 12px; border-radius: 999px;
     box-shadow: 0 4px 10px rgba(255,203,71,0.3);
   }
-  .points-badge[hidden] { display: none; }
+  .guess-badge[hidden] { display: none; }
 
   /* The guess grid: 5 letter tiles | divider | 5 symbols */
   .grid { display: grid; row-gap: 6px; max-width: 420px; margin: 0 auto; }
@@ -148,34 +148,10 @@
   .grow.new .sym svg { animation: sym-in 0.4s cubic-bezier(.34,1.56,.64,1) both; animation-delay: calc(400ms + var(--i) * 70ms); }
   @keyframes sym-in { from { transform: scale(0) rotate(-40deg); } to { transform: scale(1) rotate(0); } }
 
-  /* Timer + crowd votes */
-  .timer-wrap {
-    margin: 16px auto 0; max-width: 420px; height: 10px; border-radius: 999px; background: #0e0f26;
-    overflow: hidden; border: 1px solid var(--line);
-  }
-  .timer-bar {
-    height: 100%; border-radius: 999px; width: 0; transition: width 0.25s linear;
-    background: linear-gradient(90deg, var(--mint), var(--gold));
-  }
-  .timer-bar.low { background: linear-gradient(90deg, var(--danger), #ff9e5f); }
-  .clock-row {
-    display: flex; justify-content: space-between; gap: 8px; max-width: 420px; margin: 7px auto 0;
-    font-size: 12px; font-weight: 700; color: var(--text-dim);
-  }
-  .votes { max-width: 420px; margin: 12px auto 0; }
-  .votes-head { font-size: 12.5px; font-weight: 800; color: var(--text-dim); margin-bottom: 6px; }
-  .vote-row {
-    position: relative; display: flex; justify-content: space-between; align-items: center;
-    padding: 6px 10px; margin-bottom: 4px; border-radius: 10px; overflow: hidden;
-    background: #0e0f26; border: 1px solid var(--line);
-    font-family: 'Fredoka', sans-serif; font-weight: 600; letter-spacing: 1.5px; font-size: 14px;
-  }
-  .vote-row .fill { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--mint) 24%, transparent); transition: width 0.3s ease; }
-  .vote-row span { position: relative; }
-  .vote-row .n { font-family: 'Nunito', sans-serif; letter-spacing: 0; color: var(--mint); font-weight: 800; font-size: 12.5px; }
-  .hint-line { font-size: 12.5px; font-weight: 600; color: var(--text-dim); line-height: 1.45; }
+  /* Status line + keyboard (letters used so far) */
+  .hint-line { font-size: 12.5px; font-weight: 600; color: var(--text-dim); line-height: 1.45; text-align: center; max-width: 420px; margin: 0 auto 14px; }
   .hint-line strong { color: #fff; }
-  .tried { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: 420px; margin: 12px auto 0; }
+  .tried { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: 420px; margin: 0 auto 16px; }
   .tried span {
     width: 20px; height: 22px; display: flex; align-items: center; justify-content: center;
     border-radius: 6px; font-size: 11px; font-weight: 800; color: var(--text-faint); background: #0e0f26;
@@ -184,7 +160,7 @@
 
   /* End-of-round result */
   .result { max-width: 420px; margin: 16px auto 0; text-align: center; animation: fadein 0.25s ease; }
-  .result[hidden], .votes[hidden], .timer-wrap[hidden], .clock-row[hidden] { display: none; }
+  .result[hidden] { display: none; }
   .answer-tiles { display: flex; justify-content: center; gap: 6px; margin-bottom: 8px; }
   .answer-tiles .tile { width: 40px; aspect-ratio: 1; border-color: var(--gold); background: color-mix(in srgb, var(--gold) 16%, #14163a); color: var(--gold); font-size: 22px; }
   .result .winner { font-size: 16px; font-weight: 800; color: var(--mint); font-family: 'Fredoka', sans-serif; }
@@ -214,52 +190,11 @@
   .rules-key div { display: flex; gap: 10px; align-items: center; font-size: 13px; font-weight: 700; color: var(--text); }
   .rules-key svg { width: 22px; height: 22px; flex: 0 0 auto; }
 
-  .set-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
-
   @media (prefers-reduced-motion: reduce) {
     .tile.flip, .grow.new .tile, .grow.new .sym svg, .confetti span, .result { animation: none !important; }
     .tile.flip { border-color: var(--to-border); background: var(--to-bg); }
   }
   :focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
-
-  /* ---------------- Columns (leaderboard / chat) ---------------- */
-  .columns { display: flex; gap: 12px; flex: 1 1 auto; min-height: 230px; }
-  .panel {
-    background: var(--panel); border-radius: var(--radius-lg); border: 1px solid var(--line);
-    display: flex; flex-direction: column; overflow: hidden; flex: 1 1 0;
-    box-shadow: 0 8px 22px rgba(0,0,0,0.22);
-  }
-  .panel h2 {
-    font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); font-weight: 800;
-    margin: 0; padding: 12px 13px; border-bottom: 1px solid var(--line); flex: 0 0 auto;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .panel .body { overflow-y: auto; padding: 8px 9px; flex: 1 1 auto; }
-
-  .lb-row { display: flex; align-items: center; gap: 8px; padding: 7px 4px; font-size: 13px; border-bottom: 1px solid #23254a; }
-  .lb-rank {
-    width: 22px; height: 22px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 800; color: var(--text-faint);
-  }
-  .lb-row.top1 .lb-rank, .lb-row.top2 .lb-rank, .lb-row.top3 .lb-rank { font-size: 16px; }
-  .lb-avatar {
-    width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10.5px; font-weight: 800; color: #12132a;
-    box-shadow: inset 0 -2px 3px rgba(0,0,0,0.2), inset 0 2px 2px rgba(255,255,255,0.35);
-  }
-  .lb-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
-  .lb-score { font-weight: 800; color: var(--gold); font-size: 12.5px; }
-  .empty-note { color: var(--text-faint); font-size: 12px; padding: 14px 6px; text-align: center; font-weight: 600; }
-
-  .chat-row { font-size: 12.5px; padding: 5px 6px; word-break: break-word; border-radius: 9px; margin-bottom: 2px; }
-  .chat-row .u { color: var(--mint); font-weight: 800; }
-  .chat-row.correct { background: rgba(53,230,171,0.13); }
-  .chat-row .tag {
-    font-size: 9.5px; color: #12132a; margin-left: 4px; background: var(--gold); font-weight: 800;
-    padding: 1px 6px; border-radius: 999px;
-  }
-  .chat-row .src { font-size: 9.5px; color: var(--text-faint); margin-left: 4px; }
 
   /* ---------------- Footer / Settings trigger ---------------- */
   footer { flex: 0 0 auto; }
@@ -349,8 +284,6 @@
   .diag-log { margin-top: 12px; max-height: 100px; overflow-y: auto; border-top: 1px solid var(--line); padding-top: 8px; font-size: 11.5px; color: var(--text-dim); }
   .diag-log div { border-bottom: 1px solid #23254a; padding: 3px 0; }
 
-  .chat-row .tag.vote { background: var(--mint); }
-  .chat-row .tag.rej { background: var(--panel-3); color: var(--text-dim); }
   .rules-key .q {
     width: 22px; height: 22px; flex: 0 0 auto; border-radius: 50%; background: var(--panel-3);
     border: 1px solid var(--line); color: var(--text-dim); font-weight: 800; font-size: 12px;
@@ -380,38 +313,19 @@
 
       <div class="meta-row">
         <span class="round-chip"><span id="roundLabel">Symble</span><span class="sub" id="roundSub"></span></span>
-        <span class="points-badge" id="pointsBadge" hidden>✨ <span></span></span>
+        <span class="guess-badge" id="guessBadge" hidden><span></span></span>
       </div>
+
+      <div class="tried" id="tried" title="Keyboard — letters used in guesses so far"></div>
+      <div class="hint-line" id="hintLine"></div>
 
       <div class="grid" id="grid"></div>
-
-      <div class="timer-wrap" id="timerWrap" hidden><div class="timer-bar" id="timerBar"></div></div>
-      <div class="clock-row" id="clockRow" hidden><span id="clockLeft"></span><span id="clockRight"></span></div>
-
-      <div class="votes" id="votes">
-        <div class="votes-head" id="votesHead"></div>
-        <div id="voteList"></div>
-        <div class="hint-line" id="hintLine"></div>
-      </div>
 
       <div class="result" id="result" hidden>
         <div class="answer-tiles" id="answerTiles"></div>
         <div class="winner" id="resultWinner" hidden></div>
         <div class="nowinner" id="resultNoWinner" hidden></div>
         <div class="legend" id="legend"></div>
-      </div>
-
-      <div class="tried" id="tried" title="Letters used in guesses so far"></div>
-    </section>
-
-    <section class="columns">
-      <div class="panel">
-        <h2>🏆 Top 10</h2>
-        <div class="body" id="leaderboardBody"><div class="empty-note">No scores yet — be the first!</div></div>
-      </div>
-      <div class="panel">
-        <h2>💬 Live Chat</h2>
-        <div class="body" id="chatBody"><div class="empty-note">Chat messages will appear here.</div></div>
       </div>
     </section>
 
@@ -437,7 +351,7 @@
         <div class="rules-demo" id="rulesDemo"></div>
         <p>The 2nd symbol says the secret's <strong>H</strong> is in your guess in the right spot. The 4th says the secret's <strong>K</strong> is in your guess but in the wrong spot. The other three say S, A and E aren't in THICK at all.</p>
         <p><strong>Repeated letters:</strong> if you guess only one copy of a doubled letter and put it in the wrong spot, the <em>first</em> matching letter of the secret word gets the "wrong spot" symbol. If it's in the right spot, only that one gets "right spot" and you learn nothing about the other copy.</p>
-        <p><strong>Playing in chat:</strong> type any 5-letter word to vote for the next row. When the timer runs out, the most-voted word is locked in. Anyone who types the secret word wins the round straight away, and the sooner the better.</p>
+        <p><strong>Playing in chat:</strong> type any 5-letter word. If it's valid and nobody's guessed it yet this round, it goes straight onto the board with its symbols — no vote, no waiting. Anyone who types the secret word wins the round straight away, and there's no timer or limit on how many guesses the board can hold, so keep trying!</p>
         <p>When the round ends, the tiles flip to show their colours, and the symbols' meanings are revealed.</p>
       </div>
     </div>
@@ -479,20 +393,11 @@
           <button class="primary" id="startGameBtn">▶ Start Game</button>
           <button class="secondary" id="stopGameBtn">■ Stop Game</button>
         </div>
-        <button class="secondary" id="skipRoundBtn">⏭ Skip Round</button>
-
-        <div class="section-title">Pacing</div>
-        <div class="set-grid">
-          <div><label for="setTurn">Seconds per row</label><input type="number" id="setTurn" min="8" max="90" /></div>
-          <div><label for="setFinal">Last-chance seconds</label><input type="number" id="setFinal" min="5" max="60" /></div>
-          <div><label for="setRows">Rows on the board</label><input type="number" id="setRows" min="5" max="10" /></div>
-          <div><label for="setRound">Max round seconds</label><input type="number" id="setRound" min="60" max="900" /></div>
+        <div class="row">
+          <button class="secondary" id="revealAnswerBtn">👁 Reveal Answer</button>
+          <button class="secondary" id="skipRoundBtn">⏭ Skip Round</button>
         </div>
-        <button class="secondary" id="saveSettingsBtn">Save pacing</button>
-        <div class="small-note" id="settingsNote">The number of rows applies from the next round; the timers apply straight away.</div>
-
-        <div class="section-title">Leaderboard</div>
-        <button class="secondary danger" id="resetLbBtn">Reset Leaderboard</button>
+        <div class="small-note">There's no timer and no limit on guesses — a round runs until someone solves it, or you reveal the answer or skip it here.</div>
       </div>
 
       <div class="tab-content" data-tab="message">
@@ -502,7 +407,7 @@
         <label>Message / Guess</label>
         <input type="text" id="hostMsgText" placeholder="Type a 5-letter word..." />
         <button class="primary" id="sendHostMsgBtn">Send</button>
-        <div class="small-note">This feeds directly into the game, just like a real TikTok comment: a valid 5-letter word is a vote for the next row, and the secret word wins the round.</div>
+        <div class="small-note">This feeds directly into the game, just like a real TikTok comment: a fresh, valid 5-letter word goes straight onto the board, and the secret word wins the round.</div>
       </div>
 
       <div class="tab-content" data-tab="words">
@@ -519,7 +424,7 @@
         <div class="toggle-row">
           <div>
             <div class="lbl">Simulate fake TikTok chat</div>
-            <div class="sub">Fake viewers vote for words (and sometimes solve it) every ~1.2s</div>
+            <div class="sub">Fake viewers guess words (and sometimes solve it) every ~1.2s</div>
           </div>
           <label class="switch">
             <input type="checkbox" id="testModeToggle" />
@@ -578,8 +483,7 @@
 
   const CONCEPT_TEXT = { correct: 'Right spot', misplaced: 'Wrong spot', absent: 'Not in your guess' };
   const REASON_TEXT = {
-    timeout: "Time's up. Nobody cracked it.",
-    'out-of-rows': 'Out of rows. Nobody cracked it.',
+    revealed: 'The host revealed the answer.',
     skipped: 'Round skipped.',
   };
 
@@ -591,17 +495,12 @@
   const statusDot = $('statusDot');
   const statusText = $('statusText');
   const gridEl = $('grid');
-  const timerWrap = $('timerWrap');
-  const timerBar = $('timerBar');
-  const clockRow = $('clockRow');
-  const pointsBadge = $('pointsBadge');
-  const votesEl = $('votes');
+  const guessBadge = $('guessBadge');
   const resultEl = $('result');
   const confettiWrap = $('confettiWrap');
   const diagLog = $('diagLog');
 
   let lastState = null;
-  let serverOffset = 0; // server clock minus this device's clock
 
   function addLogLine(text) {
     const div = document.createElement('div');
@@ -644,8 +543,7 @@
 
   function renderGrid(state) {
     const rows = state.rows || [];
-    const total = Math.max(state.maxRows || 8, rows.length);
-    const sig = [state.roundNumber, state.status, total, rows.map((r) => r.word + (r.states ? '*' : '')).join(',')].join('|');
+    const sig = [state.roundNumber, state.status, rows.map((r) => r.word + (r.states ? '*' : '')).join(',')].join('|');
     if (sig === lastGridSig) return;
     lastGridSig = sig;
 
@@ -655,23 +553,25 @@
     lastGridRound = state.roundNumber;
     lastRowCount = rows.length;
 
+    if (!rows.length) { gridEl.innerHTML = ''; return; }
+
     let html = '';
-    for (let r = 0; r < total; r++) {
+    for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
-      const isNew = row && r >= prevCount;
+      const isNew = r >= prevCount;
       let tiles = '';
       let syms = '';
       for (let i = 0; i < 5; i++) {
-        const ch = row ? escapeHtml(row.word[i]) : '';
-        let cls = 'tile' + (row ? ' filled' : '');
+        const ch = escapeHtml(row.word[i]);
+        let cls = 'tile filled';
         let style = `--i:${i};`;
-        if (row && row.states) {
+        if (row.states) {
           const col = stateColors(row.states[i], state.legend);
           cls += ' flip';
-          style += `--d:${r * 120 + i * 90}ms;--to-border:${col.border};--to-bg:${col.bg};`;
+          style += `--d:${i * 90}ms;--to-border:${col.border};--to-bg:${col.bg};`;
         }
         tiles += `<div class="${cls}" style="${style}">${ch}</div>`;
-        syms += `<div class="sym" style="--i:${i}">${row ? symbolSvg(row.symbols[i]) : ''}</div>`;
+        syms += `<div class="sym" style="--i:${i}">${symbolSvg(row.symbols[i])}</div>`;
       }
       html += `<div class="grow${isNew ? ' new' : ''}">${tiles}<div class="gdiv"></div>${syms}</div>`;
     }
@@ -684,38 +584,22 @@
     $('tried').innerHTML = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((ch) => `<span class="${used.has(ch) ? 'on' : ''}">${ch}</span>`).join('');
   }
 
-  function renderVotes(state) {
-    const head = $('votesHead');
-    const list = $('voteList');
+  function renderHint(state) {
     const hint = $('hintLine');
     if (state.status === 'idle') {
-      head.textContent = '';
-      list.innerHTML = '';
       hint.innerHTML = 'Tap ⚙️ → Game → <strong>Start Game</strong> to begin. New here? Tap <strong>?</strong> for the rules.';
       return;
     }
-    if (state.phase === 'final') {
-      head.textContent = 'The board is full';
-      list.innerHTML = '';
-      hint.innerHTML = '<strong>Last chance!</strong> Type the secret word in chat before the clock runs out.';
-      return;
-    }
-    const tally = state.tally || [];
-    head.textContent = tally.length ? `Crowd vote: ${state.voters} viewer${state.voters === 1 ? '' : 's'} voting` : 'Crowd vote';
-    const max = tally.reduce((m, t) => Math.max(m, t.count), 1);
-    list.innerHTML = tally.map((t) => `
-      <div class="vote-row"><div class="fill" style="width:${Math.round((t.count / max) * 100)}%"></div><span>${escapeHtml(t.word)}</span><span class="n">${t.count}</span></div>
-    `).join('');
-    hint.innerHTML = state.rows.length === 0 && !tally.length
-      ? 'Type a <strong>5-letter word</strong> in chat to vote for the next row. Type the <strong>secret word</strong> to win!'
-      : (tally.length ? '' : 'No votes yet. Type a 5-letter word in chat.');
+    if (state.status === 'reveal') { hint.innerHTML = ''; return; }
+    hint.innerHTML = (state.rows || []).length === 0
+      ? 'Type a <strong>5-letter word</strong> in chat — a valid one goes straight onto the board. Type the <strong>secret word</strong> to win!'
+      : 'Keep guessing! Any fresh <strong>5-letter word</strong> lands on the board. Type the <strong>secret word</strong> to win!';
   }
 
   let confettiRound = null;
   function renderResult(state) {
     const revealed = state.status === 'reveal';
     resultEl.hidden = !revealed;
-    votesEl.hidden = revealed;
     if (!revealed) { confettiWrap.innerHTML = ''; return; }
 
     $('answerTiles').innerHTML = (state.answer || '').split('').map((ch) => `<div class="tile">${escapeHtml(ch)}</div>`).join('');
@@ -723,10 +607,10 @@
     const no = $('resultNoWinner');
     if (state.winner) {
       yes.hidden = false; no.hidden = true;
-      yes.textContent = '🎉 ' + state.winner.name + ' solved it! +' + state.winner.points + ' pts';
+      yes.textContent = '🎉 ' + state.winner.name + ' solved it!';
     } else {
       yes.hidden = true; no.hidden = false;
-      no.textContent = REASON_TEXT[state.reason] || 'Nobody cracked it.';
+      no.textContent = REASON_TEXT[state.reason] || 'Round over.';
     }
     $('legend').innerHTML = ['correct', 'misplaced', 'absent'].map((c) =>
       `<span class="chip">${state.legend ? symbolSvg(state.legend[c]) : ''}${CONCEPT_TEXT[c]}</span>`
@@ -750,114 +634,34 @@
     }
   }
 
+  function renderGuessBadge(state) {
+    const active = state.status === 'active';
+    guessBadge.hidden = !active;
+    if (!active) return;
+    const n = (state.rows || []).length;
+    guessBadge.querySelector('span').textContent = n === 1 ? '1 guess so far' : n + ' guesses so far';
+  }
+
   function renderState(state) {
     if (!state) return;
     lastState = state;
-    serverOffset = (state.serverNow || Date.now()) - Date.now();
 
     if (state.status === 'idle') {
       $('roundLabel').textContent = 'Symble';
       $('roundSub').textContent = 'waiting to start';
     } else {
       $('roundLabel').textContent = 'Round #' + state.roundNumber;
-      const shown = (state.rows || []).filter((r) => !r.solved).length;
-      $('roundSub').textContent = shown + '/' + state.maxRows + ' rows';
+      $('roundSub').textContent = '';
     }
     if (state.wordBankSize) $('wordBankNote').textContent = 'Word bank: ' + state.wordBankSize + ' secret words. Custom words are added on top and kept on the server.';
 
     renderGrid(state);
     renderTried(state);
-    renderVotes(state);
+    renderHint(state);
     renderResult(state);
-    updateClock();
+    renderGuessBadge(state);
   }
   socket.on('game:state', renderState);
-
-  function secs(ms) { return Math.max(0, Math.ceil(ms / 1000)); }
-  function mmss(ms) {
-    const t = secs(ms);
-    return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
-  }
-
-  function updateClock() {
-    const s = lastState;
-    const active = s && s.status === 'active';
-    timerWrap.hidden = clockRow.hidden = !active;
-    pointsBadge.hidden = !active;
-    if (!active) return;
-
-    const now = Date.now() + serverOffset;
-    let pct;
-    if (s.phase === 'final') {
-      const left = s.finalEndsAt - now;
-      pct = left / s.finalMs;
-      $('clockLeft').textContent = 'Last chance: ' + secs(left) + 's';
-    } else {
-      const left = s.turnEndsAt - now;
-      pct = left / s.turnMs;
-      $('clockLeft').textContent = 'Next row locks in ' + secs(left) + 's';
-    }
-    $('clockRight').textContent = 'Round ends in ' + mmss(s.endsAt - now);
-    pct = Math.max(0, Math.min(1, pct));
-    timerBar.style.width = (pct * 100) + '%';
-    timerBar.classList.toggle('low', pct < 0.25);
-
-    const sc = s.scoring;
-    if (sc) {
-      const rowsLeft = Math.max(0, s.maxRows - (s.rows || []).length);
-      const timeLeft = Math.max(0, Math.min(1, (s.endsAt - now) / s.timeLimitMs));
-      const pts = Math.round(sc.base + rowsLeft * sc.perUnusedRow + sc.timeBonusMax * timeLeft);
-      pointsBadge.querySelector('span').textContent = 'Solve now for ' + pts + ' pts';
-    }
-  }
-  setInterval(updateClock, 200);
-
-  // ---------------------------------------------------------------------
-  // Leaderboard
-  // ---------------------------------------------------------------------
-  const AVATAR_COLORS = ['#ff5f9e', '#35e6ab', '#ffcb47', '#4fc3ff', '#b28dff', '#ff9e5f', '#2dd4bf'];
-  function avatarColor(name) {
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-    return AVATAR_COLORS[h % AVATAR_COLORS.length];
-  }
-  function initials(name) { return String(name || '?').trim().slice(0, 2).toUpperCase(); }
-
-  socket.on('game:leaderboard', (list) => {
-    const body = $('leaderboardBody');
-    if (!list || !list.length) {
-      body.innerHTML = '<div class="empty-note">No scores yet — be the first!</div>';
-      return;
-    }
-    const medals = ['🥇', '🥈', '🥉'];
-    body.innerHTML = list.map((entry, i) => `
-      <div class="lb-row">
-        <span class="lb-rank">${medals[i] || (i + 1)}</span>
-        <span class="lb-avatar" style="background:${avatarColor(entry.name)}">${escapeHtml(initials(entry.name))}</span>
-        <span class="lb-name">${escapeHtml(entry.name)}</span>
-        <span class="lb-score">${entry.score}</span>
-      </div>
-    `).join('');
-  });
-
-  // ---------------------------------------------------------------------
-  // Chat feed
-  // ---------------------------------------------------------------------
-  const REJECT_TEXT = { 'not-a-word': 'not a word', 'already-played': 'already played', 'board-full': 'board full' };
-  socket.on('chat:message', (msg) => {
-    const chatBody = $('chatBody');
-    if (chatBody.querySelector('.empty-note')) chatBody.innerHTML = '';
-    const row = document.createElement('div');
-    row.className = 'chat-row' + (msg.correct ? ' correct' : '');
-    row.innerHTML = `<span class="u">${escapeHtml(msg.username)}</span>: ${escapeHtml(msg.text)}` +
-      (msg.correct ? ` <span class="tag">solved +${msg.points}</span>` : '') +
-      (msg.vote ? ' <span class="tag vote">vote</span>' : '') +
-      (msg.rejected ? ` <span class="tag rej">${REJECT_TEXT[msg.rejected] || 'ignored'}</span>` : '') +
-      (msg.source === 'test' ? ' <span class="src">test</span>' : '');
-    chatBody.appendChild(row);
-    chatBody.scrollTop = chatBody.scrollHeight;
-    while (chatBody.children.length > 100) chatBody.removeChild(chatBody.firstChild);
-  });
 
   // ---------------------------------------------------------------------
   // Sheets (rules + host controls) and tabs
@@ -909,25 +713,8 @@
   $('disconnectBtn').addEventListener('click', () => socket.emit('host:disconnectTikTok'));
   $('startGameBtn').addEventListener('click', () => socket.emit('host:startGame'));
   $('stopGameBtn').addEventListener('click', () => socket.emit('host:stopGame'));
+  $('revealAnswerBtn').addEventListener('click', () => socket.emit('host:revealAnswer'));
   $('skipRoundBtn').addEventListener('click', () => socket.emit('host:skipRound'));
-  $('resetLbBtn').addEventListener('click', () => {
-    if (confirm('Reset the leaderboard? This cannot be undone.')) socket.emit('host:resetLeaderboard');
-  });
-
-  // Pacing settings
-  const settingFields = { turnSeconds: $('setTurn'), finalSeconds: $('setFinal'), maxRows: $('setRows'), roundSeconds: $('setRound') };
-  socket.on('game:settings', (s) => {
-    for (const [key, el] of Object.entries(settingFields)) {
-      if (document.activeElement !== el && s[key] != null) el.value = s[key];
-    }
-  });
-  $('saveSettingsBtn').addEventListener('click', () => {
-    const patch = {};
-    for (const [key, el] of Object.entries(settingFields)) patch[key] = el.value;
-    socket.emit('host:updateSettings', patch);
-    const note = $('settingsNote');
-    note.textContent = 'Saved. Rows on the board change from the next round.';
-  });
 
   $('sendHostMsgBtn').addEventListener('click', () => {
     const text = $('hostMsgText').value;

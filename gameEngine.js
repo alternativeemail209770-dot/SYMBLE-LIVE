@@ -18,11 +18,12 @@ import { EventEmitter } from 'events';
 // * The colours of the guessed tiles stay hidden until the round is over.
 //
 // HOW IT PLAYS ON TIKTOK LIVE
-// * Every valid 5-letter word typed in chat is a VOTE for the next row.
-//   When the turn timer runs out, the most-voted word is locked in as a row.
-// * Anyone who types the SECRET word wins the round instantly (no vote needed).
-// * When the board is full there's a short "final chance" window, then the
-//   answer is revealed and the tiles flip to their colours.
+// * Every valid 5-letter word typed in chat that hasn't been guessed yet goes
+//   straight onto the board as a new row, with no vote and no waiting.
+// * Anyone who types the SECRET word wins the round instantly.
+// * There's no timer and no cap on the number of guesses: the round keeps
+//   going until someone solves it, the host reveals the answer, or the host
+//   skips the round.
 // ===========================================================================
 
 export const WORD_LENGTH = 5;
@@ -30,25 +31,8 @@ export const CONCEPTS = ['correct', 'misplaced', 'absent'];
 // Ids must match the SVG symbols drawn in public/index.html
 export const SYMBOL_POOL = ['heart', 'drop', 'sun', 'infinity', 'star', 'diamond', 'moon', 'bolt', 'plus', 'triangle'];
 
-export const DEFAULT_SETTINGS = {
-  maxRows: 8,        // rows on the board (the original Symble has 8)
-  turnSeconds: 20,   // how long the crowd has to vote for each row
-  finalSeconds: 20,  // "last chance" window after the last row is locked
-  roundSeconds: 300, // hard cap on a whole round
-};
-
-// Points - tweak to taste.
-const SCORING = {
-  base: 100,         // for solving the round
-  perUnusedRow: 20,  // + this for every row still empty (fewer clues used = more points)
-  timeBonusMax: 60,  // + up to this, shrinking as the round clock runs down
-  votePoints: 5,     // for everyone who voted for the word that got locked in
-};
-
 const STATUS = { IDLE: 'idle', ACTIVE: 'active', REVEAL: 'reveal' };
 const ROUND_GAP_MS = 6500; // pause between rounds so the reveal is readable
-const TICK_MS = 250;
-const TALLY_BROADCAST_MS = 400;
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -91,12 +75,6 @@ function shuffle(list) {
   }
   return a;
 }
-
-const clamp = (n, lo, hi, fallback) => {
-  const v = Math.round(Number(n));
-  if (!Number.isFinite(v)) return fallback;
-  return Math.min(hi, Math.max(lo, v));
-};
 
 /**
  * Score one guess against the answer.
@@ -151,7 +129,7 @@ export class GameEngine extends EventEmitter {
    * @param {string[]} answers     words that can be the secret word
    * @param {string[]} validWords  extra words that are accepted as guesses
    */
-  constructor(answers = [], validWords = [], settings = {}) {
+  constructor(answers = [], validWords = []) {
     super();
     const clean = (list) => [...new Set(
       (Array.isArray(list) ? list : [])
@@ -162,25 +140,16 @@ export class GameEngine extends EventEmitter {
     if (!this.answers.length) this.answers = ['SHAKE', 'THICK', 'SHOOK', 'STARE', 'SOLID'];
     this.valid = new Set([...this.answers, ...clean(validWords)]);
 
-    this.settings = { ...DEFAULT_SETTINGS };
-    this.updateSettings(settings, { silent: true });
-
     this.usedRecently = [];
-    this.leaderboard = new Map(); // key -> { name, score, correct }
     this.roundNumber = 0;
-    this.voteSeq = 0;
 
     this.status = STATUS.IDLE;
     this.current = null;
-    this.timer = null;
     this.nextRoundTimeout = null;
-    this.broadcastTimeout = null;
-
-    this._tick = this._tick.bind(this);
   }
 
   // -------------------------------------------------------------------
-  // Word bank + settings
+  // Word bank
   // -------------------------------------------------------------------
 
   get wordBankSize() { return this.answers.length; }
@@ -196,19 +165,9 @@ export class GameEngine extends EventEmitter {
     return { answer };
   }
 
-  /** A familiar word, used by Test Mode for fake votes. */
+  /** A familiar word, used by Test Mode for fake guesses. */
   randomValidWord() {
     return this.answers[Math.floor(Math.random() * this.answers.length)];
-  }
-
-  updateSettings(patch = {}, { silent = false } = {}) {
-    const s = this.settings;
-    s.maxRows = clamp(patch.maxRows ?? s.maxRows, 5, 10, DEFAULT_SETTINGS.maxRows);
-    s.turnSeconds = clamp(patch.turnSeconds ?? s.turnSeconds, 8, 90, DEFAULT_SETTINGS.turnSeconds);
-    s.finalSeconds = clamp(patch.finalSeconds ?? s.finalSeconds, 5, 60, DEFAULT_SETTINGS.finalSeconds);
-    s.roundSeconds = clamp(patch.roundSeconds ?? s.roundSeconds, 60, 900, DEFAULT_SETTINGS.roundSeconds);
-    if (!silent) this.emit('settingsUpdated', { ...s });
-    return { ...s };
   }
 
   // -------------------------------------------------------------------
@@ -217,7 +176,6 @@ export class GameEngine extends EventEmitter {
 
   start() {
     this._clearTimers();
-    this.timer = setInterval(this._tick, TICK_MS);
     this._startRound();
   }
 
@@ -228,22 +186,19 @@ export class GameEngine extends EventEmitter {
     this.emit('stateChanged', this.getPublicState());
   }
 
+  /** Host action: end the round right now and show the answer. */
+  revealAnswer() {
+    if (this.status === STATUS.ACTIVE && this.current) this._endRound('revealed', null);
+  }
+
+  /** Host action: abandon the round and move on. */
   skipRound() {
     if (this.status === STATUS.ACTIVE && this.current) this._endRound('skipped', null);
   }
 
-  resetLeaderboard() {
-    this.leaderboard.clear();
-    this.emit('leaderboardUpdated', this.getLeaderboard());
-  }
-
   _clearTimers() {
-    if (this.timer) clearInterval(this.timer);
     if (this.nextRoundTimeout) clearTimeout(this.nextRoundTimeout);
-    if (this.broadcastTimeout) clearTimeout(this.broadcastTimeout);
-    this.timer = null;
     this.nextRoundTimeout = null;
-    this.broadcastTimeout = null;
   }
 
   // -------------------------------------------------------------------
@@ -269,21 +224,12 @@ export class GameEngine extends EventEmitter {
     const symbolMap = {};
     concepts.forEach((concept, i) => { symbolMap[concept] = symbols[i]; });
 
-    const s = this.settings;
-    const now = Date.now();
     this.current = {
       answer,
-      symbolMap,                  // { correct: 'sun', misplaced: 'drop', absent: 'heart' } - secret until the reveal
-      rows: [],                   // locked-in guesses
-      votes: new Map(),           // userKey -> { word, name, at }
-      maxRows: s.maxRows,
-      phase: 'voting',            // 'voting' | 'final'
-      startedAt: now,
-      endsAt: now + s.roundSeconds * 1000,
-      timeLimitMs: s.roundSeconds * 1000,
-      turnMs: s.turnSeconds * 1000,
-      turnEndsAt: now + s.turnSeconds * 1000,
-      finalEndsAt: null,
+      symbolMap,        // { correct: 'sun', misplaced: 'drop', absent: 'heart' } - secret until the reveal
+      rows: [],          // guesses, in the order they landed on the board
+      guessed: new Set(), // words already on the board, so nobody can repeat one
+      startedAt: Date.now(),
       winner: null,
       reason: null,
       over: false,
@@ -297,7 +243,7 @@ export class GameEngine extends EventEmitter {
     if (this.nextRoundTimeout) clearTimeout(this.nextRoundTimeout);
     this.nextRoundTimeout = setTimeout(() => {
       this.nextRoundTimeout = null;
-      if (this.timer) this._startRound(); // only continue if the game hasn't been stopped
+      if (this.status === STATUS.REVEAL) this._startRound(); // only continue if the game hasn't been stopped
     }, ROUND_GAP_MS);
   }
 
@@ -307,107 +253,17 @@ export class GameEngine extends EventEmitter {
     c.over = true;
     c.reason = reason;
     c.winner = winner;
-    c.votes.clear();
     this.status = STATUS.REVEAL;
-    c.revealAt = Date.now();
     this.emit('roundEnded', { reason, answer: c.answer, winner });
     this.emit('stateChanged', this.getPublicState());
     this._scheduleNextRound();
   }
 
   // -------------------------------------------------------------------
-  // Clock: locks in rows and ends rounds
-  // -------------------------------------------------------------------
-
-  _tick() {
-    if (this.status !== STATUS.ACTIVE || !this.current) return;
-    const c = this.current;
-    const now = Date.now();
-
-    if (now >= c.endsAt) return this._endRound('timeout', null);
-    if (c.phase === 'final') {
-      if (now >= c.finalEndsAt) this._endRound('out-of-rows', null);
-      return;
-    }
-    if (now >= c.turnEndsAt) this._lockTurn(now);
-  }
-
-  _tally() {
-    const c = this.current;
-    const byWord = new Map();
-    for (const [key, v] of c.votes) {
-      const e = byWord.get(v.word) || { word: v.word, count: 0, first: v.at, voters: [] };
-      e.count += 1;
-      e.first = Math.min(e.first, v.at);
-      e.voters.push({ key, name: v.name });
-      byWord.set(v.word, e);
-    }
-    return [...byWord.values()].sort((a, b) => b.count - a.count || a.first - b.first);
-  }
-
-  _lockTurn(now) {
-    const c = this.current;
-    const tally = this._tally();
-
-    if (!tally.length) {
-      // Nobody voted - give the crowd another full turn instead of wasting a row.
-      c.turnEndsAt = now + c.turnMs;
-      this.emit('stateChanged', this.getPublicState());
-      return;
-    }
-
-    const top = tally[0];
-    const { states, symbols } = evaluateGuess(c.answer, top.word);
-    c.rows.push({
-      word: top.word,
-      votes: top.count,
-      states,
-      symbols: symbols.map((concept) => c.symbolMap[concept]),
-    });
-
-    for (const voter of top.voters) this._addPoints(voter.key, voter.name, SCORING.votePoints, false);
-    c.votes.clear();
-
-    if (c.rows.length >= c.maxRows) {
-      c.phase = 'final';
-      c.finalEndsAt = Math.min(c.endsAt, now + this.settings.finalSeconds * 1000);
-    } else {
-      c.turnEndsAt = now + c.turnMs;
-    }
-
-    this.emit('rowLocked', { word: top.word, votes: top.count });
-    this.emit('leaderboardUpdated', this.getLeaderboard());
-    this.emit('stateChanged', this.getPublicState());
-  }
-
-  _queueBroadcast() {
-    if (this.broadcastTimeout) return;
-    this.broadcastTimeout = setTimeout(() => {
-      this.broadcastTimeout = null;
-      if (this.status === STATUS.ACTIVE) this.emit('stateChanged', this.getPublicState());
-    }, TALLY_BROADCAST_MS);
-  }
-
-  _points(c, now) {
-    const rowsLeft = Math.max(0, c.maxRows - c.rows.length);
-    const timeLeft = Math.max(0, Math.min(1, (c.endsAt - now) / c.timeLimitMs));
-    return Math.round(SCORING.base + rowsLeft * SCORING.perUnusedRow + SCORING.timeBonusMax * timeLeft);
-  }
-
-  _addPoints(key, name, points, isWin) {
-    const entry = this.leaderboard.get(key) || { name, score: 0, correct: 0 };
-    entry.name = name || entry.name;
-    entry.score += points;
-    if (isWin) entry.correct += 1;
-    this.leaderboard.set(key, entry);
-    return entry;
-  }
-
-  // -------------------------------------------------------------------
   // Chat input (TikTok comments, test mode, or the host's message box)
   //   returns null            -> not a guess at all (normal chatter / no round)
   //           { rejected }    -> looked like a guess but was refused
-  //           { vote, word }  -> counted as a vote for the next row
+  //           { added, word } -> a fresh, valid guess - now a row on the board
   //           { correct ... } -> solved it!
   // -------------------------------------------------------------------
 
@@ -417,36 +273,36 @@ export class GameEngine extends EventEmitter {
     const word = parseGuess(text);
     if (!word) return null;
 
-    const key = normalize(username) || normalize(displayName) || 'anonymous';
     const name = displayName || username || 'viewer';
 
-    // The secret word always wins, whether or not the board is still taking votes.
+    // The secret word always wins, no matter how many guesses are already on the board.
     if (word === c.answer) {
-      const points = this._points(c, Date.now());
-      const entry = this._addPoints(key, name, points, true);
-      this._endRound('guessed', { name: entry.name, points });
-      this.emit('leaderboardUpdated', this.getLeaderboard());
-      return { correct: true, points, name: entry.name };
+      this._endRound('guessed', { name });
+      return { correct: true, name };
     }
 
     if (!this.valid.has(word)) return { rejected: 'not-a-word', word };
-    if (c.rows.some((r) => r.word === word)) return { rejected: 'already-played', word };
-    if (c.phase === 'final') return { rejected: 'board-full', word };
+    if (c.guessed.has(word)) return { rejected: 'already-played', word };
 
-    c.votes.set(key, { word, name, at: ++this.voteSeq }); // seq (not clock) so ties are always broken by who got there first
-    this._queueBroadcast();
-    return { vote: true, word };
+    // A fresh, valid guess that doesn't conflict with anything already on the
+    // board goes straight in as the next row - no vote, no waiting.
+    const { states, symbols } = evaluateGuess(c.answer, word);
+    c.guessed.add(word);
+    c.rows.push({
+      word,
+      guessedBy: name,
+      states,
+      symbols: symbols.map((concept) => c.symbolMap[concept]),
+    });
+
+    this.emit('rowAdded', { word, name });
+    this.emit('stateChanged', this.getPublicState());
+    return { added: true, word };
   }
 
   // -------------------------------------------------------------------
-  // Read-only views for the front-end
+  // Read-only view for the front-end
   // -------------------------------------------------------------------
-
-  getLeaderboard() {
-    return [...this.leaderboard.values()].sort((a, b) => b.score - a.score).slice(0, 10);
-  }
-
-  getSettings() { return { ...this.settings }; }
 
   getPublicState() {
     const base = {
@@ -454,49 +310,24 @@ export class GameEngine extends EventEmitter {
       roundNumber: this.roundNumber,
       wordBankSize: this.answers.length,
       wordLength: WORD_LENGTH,
-      serverNow: Date.now(),
     };
-    if (!this.current) return { ...base, maxRows: this.settings.maxRows, rows: [] };
+    if (!this.current) return { ...base, rows: [] };
 
     const c = this.current;
-    const now = Date.now();
     const revealed = this.status === STATUS.REVEAL;
 
     // Tile colours (states) stay secret until the round is over.
-    let rows = c.rows.map((r) => ({
+    const rows = c.rows.map((r) => ({
       word: r.word,
-      votes: r.votes,
+      guessedBy: r.guessedBy,
       symbols: r.symbols,
       ...(revealed ? { states: r.states } : {}),
     }));
-    if (revealed && c.winner && rows.length < c.maxRows) {
-      rows.push({
-        word: c.answer,
-        votes: 0,
-        solved: true,
-        symbols: new Array(WORD_LENGTH).fill(c.symbolMap.correct),
-        states: new Array(WORD_LENGTH).fill('correct'),
-      });
-    }
 
-    const tally = revealed ? [] : this._tally();
     return {
       ...base,
-      maxRows: c.maxRows,
       rows,
-      phase: c.phase,
       startedAt: c.startedAt,
-      endsAt: c.endsAt,
-      timeLimitMs: c.timeLimitMs,
-      msRemaining: Math.max(0, c.endsAt - now),
-      turnMs: c.turnMs,
-      turnEndsAt: c.turnEndsAt,
-      finalEndsAt: c.finalEndsAt,
-      finalMs: this.settings.finalSeconds * 1000,
-      tally: tally.slice(0, 5).map((t) => ({ word: t.word, count: t.count })),
-      voters: c.votes.size,
-      currentPoints: revealed ? 0 : this._points(c, now),
-      scoring: { ...SCORING }, // lets the screen count the points down between updates
       // Only revealed at the end of the round:
       answer: revealed ? c.answer : null,
       winner: revealed ? c.winner : null,

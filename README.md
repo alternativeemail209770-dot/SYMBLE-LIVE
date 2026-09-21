@@ -2,9 +2,10 @@
 
 A fully automated version of **Symble** that reads your TikTok LIVE chat in
 real time. Viewers work together to crack a secret 5-letter word using a board
-of guesses and a column of mystery symbols. The fastest viewer to type the
-secret word wins the round, and a Top 10 leaderboard tracks everyone across
-the whole stream.
+of guesses and a column of mystery symbols. There's no timer and no limit on
+guesses — every valid 5-letter word that hasn't been tried yet goes straight
+onto the board, and the round keeps going until someone types the secret word,
+the host reveals the answer, or the host skips the round.
 
 There is **no host password**. The gear icon opens Host Controls for anyone
 with the page open — see "A note on Host Controls" below.
@@ -38,18 +39,18 @@ The **?** button in the top bar shows this to your viewers, with a worked exampl
 
 **How it plays in TikTok chat**
 
-- Any real 5-letter word a viewer types is a **vote for the next row**. Each
-  viewer has one vote per row (typing another word changes their vote).
-- When the row timer runs out (20 seconds by default), the most-voted word
-  is locked into the board and its 5 symbols appear. Everyone who voted for it
-  earns a few points.
-- **Anyone who types the secret word wins the round instantly.** They don't
-  need to win a vote, so once a viewer has worked it out, they should type it!
-- When the board is full (8 rows), there's a short "last chance" window, then
-  the answer is revealed. If nobody solves it, nobody scores and the next
-  round starts a few seconds later.
+- Any real 5-letter word a viewer types that hasn't already been guessed this
+  round goes **straight onto the board** — no vote, no waiting. Its row of 5
+  symbols appears immediately.
+- **Anyone who types the secret word wins the round instantly.**
+- There's no timer and no cap on the number of guesses. The round keeps going
+  until someone solves it, or the host reveals the answer / skips the round
+  from Host Controls → Game. A few seconds after a round ends, the next one
+  starts automatically.
 - Chat that isn't a single 5-letter word (like "lol" or "omg so hard") is
   ignored by the game. Viewers can also type `!guess crane` if they prefer.
+- If a word has already been guessed this round, or isn't in the word list,
+  the game simply ignores it — the viewer can try something else.
 
 ---
 
@@ -176,15 +177,15 @@ You now have a GitHub repository Render can deploy from.
 You don't need to be live on TikTok to try this out:
 
 1. Open the **Status** tab and flip the "Simulate fake TikTok chat" switch
-   **on**. Fake viewers will start voting for words in the chat feed every
-   second or so, and every so often one of them will "solve" the puzzle.
+   **on**. Fake viewers will start guessing words every second or so, and
+   every so often one of them will "solve" the puzzle.
 2. Open the **Game** tab and tap **▶ Start Game**.
-3. Watch the board: the crowd's top-voted words appear under the timer, each
-   row locks in with its 5 symbols when the timer runs out, and when a round
-   ends the tiles flip to their colours and the answer and symbol meanings
-   are revealed.
-4. You can also type guesses yourself in the **Message** tab. A valid 5-letter
-   word is a vote, and the secret word wins the round.
+3. Watch the board: each fresh, valid guess lands on the board immediately
+   with its 5 symbols, and when a round ends the tiles flip to their colours
+   and the answer and symbol meanings are revealed.
+4. You can also type guesses yourself in the **Message** tab. A fresh, valid
+   5-letter word goes straight onto the board, and the secret word wins the
+   round.
 5. The **Status** tab also shows live diagnostics — a counter of every
    message received and the last one — so you always know things are
    working even without checking server logs.
@@ -206,20 +207,20 @@ When you're happy, turn Test Mode back **off**.
    into the game — no further setup needed.
 6. Share your screen (or point your camera at your phone) so your viewers
    can see the board while they type answers in your normal TikTok chat.
-   A good pinned comment: *"Type a 5-letter word to vote. Type the secret
-   word to win!"*
+   A good pinned comment: *"Type a 5-letter word — a good guess goes
+   straight on the board. Type the secret word to win!"*
+7. When you want to move on, use **Host Controls → Game → Reveal Answer**
+   (shows the answer and ends the round normally) or **Skip Round** (abandons
+   the current round). Either way, the next round starts automatically a few
+   seconds later.
 
 ---
 
 ## Customizing the game
 
-- **Pacing**: Host Controls → **Game → Pacing**.
-  - *Seconds per row* — how long the crowd has to vote for each row (default 20).
-  - *Last-chance seconds* — how long viewers can still solve it after the last
-    row (default 20).
-  - *Rows on the board* — 5 to 10 (default 8, like the original Symble). This
-    applies from the next round; the timers apply straight away.
-  - *Max round seconds* — a hard cap for a whole round (default 300).
+- **Round control**: Host Controls → **Game**. Start/Stop the game, or use
+  **Reveal Answer** / **Skip Round** to end the current round early — there's
+  no timer, so a round otherwise runs until someone solves it.
 - **Add secret words**: Host Controls → **Add Word**. Type any 5-letter word and
   tap **Add to Word Bank**. It can come up as a secret word from then on.
   Render's free tier wipes files whenever it redeploys, so to keep a word
@@ -228,9 +229,8 @@ When you're happy, turn Test Mode back **off**.
   (✏️) icon to edit, and add or remove words. Each one is 5 capital letters in
   quotes, followed by a comma (except the last one). Commit, then redeploy in
   Render (Manual Deploy → Deploy latest commit). `guesses.json` works the same
-  way; it's the list of extra words viewers may vote for. Anything in
+  way; it's the list of extra words viewers may guess with. Anything in
   `words.json` is also accepted as a guess automatically.
-- **Scoring**: see below.
 
 ---
 
@@ -246,19 +246,18 @@ Usually means either the username is wrong, you're not currently live, or
 the Euler Stream key is missing/invalid. Re-check Step 7 and try again —
 the game always retries automatically before giving up.
 
-**A viewer's guess did nothing.**
-The chat shows a small tag next to each guess. "vote" means it counted;
-"not a word" means it's not in the word list; "already played" means that
-word is already on the board; "board full" means you're in the last-chance
-window (only the secret word counts now). Guesses must be a single 5-letter
-word with no other text.
+**A viewer's guess didn't appear on the board.**
+The game silently ignores anything that isn't a single 5-letter word, a word
+not in the list, or a word that's already been guessed this round — the
+viewer just needs to try something else.
 
 **The page looks fine but nothing updates.**
 Refresh the page once. The browser reconnects to the server automatically,
 but a hard refresh never hurts.
 
-**I want to reset everyone's scores.**
-Host Controls → Game → **Reset Leaderboard**.
+**A round is dragging on too long.**
+Host Controls → Game → **Reveal Answer** (or **Skip Round**) ends it right
+away; the next round starts automatically a few seconds later.
 
 **Someone else opened Host Controls and I didn't want them to.**
 There's no password gate on this build — the gear icon is open to anyone
@@ -269,19 +268,5 @@ description or bio) if that matters to you.
 Open the Logs tab on Render and look for a red error line — usually a typo
 in an environment variable, or the build still in progress. Give it a
 couple of minutes on first deploy.
-
----
-
-## How the scoring works (for the curious)
-
-- **Solving the round** (typing the secret word): `100` points, plus `20` for
-  every row still empty on the board, plus up to `60` more for time left on
-  the round clock. Solving it with an empty board is worth about 320; solving
-  it after the board is full is worth about 160. The board shows the current value.
-- **Voting**: everyone who voted for the word that got locked into a row
-  earns `5` points.
-- Only the first person to type the secret word scores the round; the round
-  ends immediately.
-- If nobody solves it, nobody scores for the solve and the answer is revealed.
 
 Enjoy the stream! 🎉

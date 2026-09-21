@@ -58,7 +58,6 @@ const io = new SocketIOServer(server, { cors: { origin: '*' } });
 const WORDS_PATH = path.join(__dirname, 'words.json');
 const GUESSES_PATH = path.join(__dirname, 'guesses.json');
 const CUSTOM_WORDS_PATH = path.join(__dirname, 'words-custom.json');
-const LEADERBOARD_PATH = path.join(__dirname, 'leaderboard.json');
 
 function loadJsonSafe(filePath, fallback) {
   try {
@@ -75,27 +74,6 @@ const builtInWords = loadJsonSafe(WORDS_PATH, []);
 const validGuesses = loadJsonSafe(GUESSES_PATH, []);
 const customWords = loadJsonSafe(CUSTOM_WORDS_PATH, []);
 const engine = new GameEngine([...builtInWords, ...customWords], validGuesses);
-
-// Restore leaderboard across restarts, if present.
-const savedLeaderboard = loadJsonSafe(LEADERBOARD_PATH, null);
-if (savedLeaderboard && typeof savedLeaderboard === 'object') {
-  try {
-    for (const [key, val] of Object.entries(savedLeaderboard)) {
-      engine.leaderboard.set(key, val);
-    }
-  } catch (err) {
-    console.error('[LEADERBOARD] Failed to restore:', err);
-  }
-}
-function persistLeaderboard() {
-  try {
-    const obj = Object.fromEntries(engine.leaderboard.entries());
-    fs.writeFileSync(LEADERBOARD_PATH, JSON.stringify(obj, null, 2));
-  } catch (err) {
-    console.error('[LEADERBOARD] Failed to persist:', err);
-  }
-}
-setInterval(safe('persistLeaderboard', persistLeaderboard), 20000);
 
 // ---------------------------------------------------------------------------
 // 3. Diagnostics counters (shown on-screen so a non-coder can self-debug)
@@ -133,20 +111,6 @@ function extractChatFields(data) {
   const displayName =
     data?.user?.nickname ?? data?.nickname ?? data?.user?.uniqueId ?? username;
   return { text: String(text || ''), username: String(username || 'unknown_user'), displayName: String(displayName || username) };
-}
-
-/** Send one chat line to every screen, tagged with what the game did with it. */
-function emitChat(name, text, result, source) {
-  io.emit('chat:message', {
-    username: name,
-    text,
-    ts: Date.now(),
-    correct: Boolean(result && result.correct),
-    points: result?.points || 0,
-    vote: result?.vote ? result.word : null,
-    rejected: result?.rejected || null,
-    source,
-  });
 }
 
 function wireConnectionEvents(connection) {
@@ -197,7 +161,7 @@ function wireConnectionEvents(connection) {
       diagnostics.lastReceived = { username: displayName, text, ts: Date.now() };
       broadcastDiagnostics();
 
-      emitChat(displayName, text, engine.handleGuess(username, displayName, text), 'tiktok');
+      engine.handleGuess(username, displayName, text);
     })
   );
 }
@@ -283,10 +247,7 @@ async function disconnectFromTikTok() {
 // 5. Game engine -> broadcast bridge
 // ---------------------------------------------------------------------------
 engine.on('stateChanged', safe('emit:stateChanged', (state) => io.emit('game:state', state)));
-engine.on('leaderboardUpdated', safe('emit:leaderboard', (lb) => io.emit('game:leaderboard', lb)));
-engine.on('roundEnded', safe('emit:roundEnded', (payload) => io.emit('game:roundEnded', payload)));
 engine.on('wordBankUpdated', safe('emit:wordBank', (count) => io.emit('game:wordBankSize', count)));
-engine.on('settingsUpdated', safe('emit:settings', (settings) => io.emit('game:settings', settings)));
 
 // ---------------------------------------------------------------------------
 // 6. Test mode - simulate fake chat locally without going LIVE
@@ -304,10 +265,10 @@ function startTestMode() {
       const active = state.status === 'active' && engine.current;
       let text;
       const roll = Math.random();
-      if (active && roll < 0.04 + 0.03 * state.rows.length) {
-        text = engine.current.answer; // somebody cracked it - more likely the more rows are on the board
+      if (active && roll < 0.04 + 0.01 * state.rows.length) {
+        text = engine.current.answer; // somebody cracked it - more likely the more guesses are on the board
       } else if (active && roll < 0.7) {
-        text = engine.randomValidWord(); // a vote for the next row
+        text = engine.randomValidWord(); // a fresh guess for the board
       } else {
         text = FAKE_CHATTER[Math.floor(Math.random() * FAKE_CHATTER.length)];
       }
@@ -316,7 +277,7 @@ function startTestMode() {
       diagnostics.rawEventCount += 1;
       diagnostics.lastReceived = { username: label, text, ts: Date.now() };
       broadcastDiagnostics();
-      emitChat(label, text, engine.handleGuess(user, label, text), 'test');
+      engine.handleGuess(user, label, text);
     }),
     1200
   );
@@ -333,8 +294,6 @@ function stopTestMode() {
 io.on('connection', (socket) => {
   // Send current snapshot to the newly connected client.
   socket.emit('game:state', engine.getPublicState());
-  socket.emit('game:leaderboard', engine.getLeaderboard());
-  socket.emit('game:settings', engine.getSettings());
   socket.emit('diagnostics:update', diagnostics);
   socket.emit('tiktok:status', { state: diagnostics.connectionState, message: diagnostics.connectionMessage });
   socket.emit('server:config', {
@@ -358,17 +317,12 @@ io.on('connection', (socket) => {
     engine.stop();
   }));
 
+  socket.on('host:revealAnswer', safe('socket:revealAnswer', () => {
+    engine.revealAnswer();
+  }));
+
   socket.on('host:skipRound', safe('socket:skipRound', () => {
     engine.skipRound();
-  }));
-
-  socket.on('host:resetLeaderboard', safe('socket:resetLeaderboard', () => {
-    engine.resetLeaderboard();
-    persistLeaderboard();
-  }));
-
-  socket.on('host:updateSettings', safe('socket:updateSettings', (patch) => {
-    engine.updateSettings(patch || {});
   }));
 
   socket.on('host:sendMessage', safe('socket:sendMessage', ({ name, text } = {}) => {
@@ -380,7 +334,7 @@ io.on('connection', (socket) => {
     diagnostics.lastReceived = { username: `${who} (host)`, text: clean, ts: Date.now() };
     broadcastDiagnostics();
 
-    emitChat(`${who} (host)`, clean, engine.handleGuess(who, who, clean), 'host');
+    engine.handleGuess(who, who, clean);
   }));
 
   socket.on('host:addWord', safe('socket:addWord', (entry, ack) => {
