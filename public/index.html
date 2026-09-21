@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-<meta name="twistle-build" content="5" />
+<meta name="twistle-build" content="6" />
 <title>TWISTLE</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -82,6 +82,11 @@
     font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
     transition: transform 0.12s ease, background 0.12s ease;
   }
+  .icon-btn[hidden] { display: none; }
+  .icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-btn .fs-exit { display: none; }
+  html.is-fs .icon-btn .fs-enter { display: none; }
+  html.is-fs .icon-btn .fs-exit { display: inline; }
   .icon-btn:active { transform: scale(0.92); }
   .icon-btn:hover { background: var(--panel-3); }
 
@@ -298,6 +303,16 @@
   .len-summary { margin-top: 12px; padding: 9px 11px; border-radius: 12px; background: var(--panel-2); border: 1px solid rgba(53,230,171,0.35); font-size: 12.5px; font-weight: 700; color: var(--mint); line-height: 1.4; }
 
   /* Connection message under the Connect buttons */
+  /* ---------------- Fullscreen ----------------
+     The game is designed as a tall phone-shaped column (like the TikTok LIVE frame). In fullscreen on a wide
+     screen we keep that shape: the app stays a centred column no wider than a 9:16 frame at full height, and
+     the spare space on either side is just background. Nothing is stretched or scaled out of proportion.
+     On a phone / portrait tablet the column is already narrower than the screen, so it simply fills it. */
+  html.is-fs { --fs-w: min(100vw, calc(var(--vh) * 56.25)); }
+  html.is-fs #app { width: var(--fs-w); margin: 0 auto; box-shadow: 0 0 0 1px var(--line), 0 0 60px rgba(0,0,0,0.55); }
+  html.is-fs .sheet { left: calc(50% - var(--fs-w) / 2); right: calc(50% - var(--fs-w) / 2); }
+  .key-warn { margin-top: 12px; padding: 9px 11px; border-radius: 12px; background: rgba(255,95,109,0.12); border: 1px solid rgba(255,95,109,0.45); color: var(--danger); font-size: 12.5px; font-weight: 700; line-height: 1.4; }
+  .key-warn[hidden] { display: none; }
   .conn-status { margin-top: 12px; padding: 9px 11px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 700; color: var(--text-dim); line-height: 1.4; }
   .conn-status.connected { color: var(--mint); border-color: rgba(53,230,171,0.4); }
   .conn-status.connecting { color: var(--gold); border-color: rgba(255,203,71,0.4); }
@@ -320,6 +335,10 @@
     </div>
     <div class="header-right">
       <span class="status-pill"><span class="status-dot" id="statusDot"></span><span id="statusText">Offline</span></span>
+      <button class="icon-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen" hidden>
+        <svg class="fs-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        <svg class="fs-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+      </button>
       <button class="icon-btn" id="rulesBtn" title="How to play" aria-label="How to play">?</button>
       <button class="icon-btn" id="settingsBtn" title="Host Controls & Settings" aria-label="Host controls">⚙️</button>
     </div>
@@ -397,14 +416,13 @@
         <div class="section-title">TikTok LIVE connection</div>
         <label>TikTok Username (without @)</label>
         <input type="text" id="tiktokUsername" placeholder="e.g. officialgeilegisela" />
-        <label>Euler Stream Signing API Key</label>
-        <input type="text" id="signApiKey" placeholder="Paste your eulerstream.com API key" />
         <div class="row">
           <button class="primary" id="connectBtn">Connect to LIVE</button>
           <button class="secondary danger" id="disconnectBtn">Disconnect</button>
         </div>
         <div class="conn-status" id="connStatus">Not connected.</div>
-        <div class="small-note">Get a free key at eulerstream.com. Your stream must be LIVE before connecting. This panel is open to anyone with the page link — there's no host password.</div>
+        <div class="key-warn" id="keyWarn" hidden>The server has no SIGN_API_KEY yet. Add it under Render → Environment and redeploy, or connecting to LIVE will fail.</div>
+        <div class="small-note">Your stream must be LIVE before connecting. The signing key is stored on the server, so there's nothing to paste here. This panel is open to anyone with the page link — there's no host password.</div>
       </div>
 
       <div class="tab-content" data-tab="game">
@@ -488,6 +506,41 @@
   setVh();
   window.addEventListener('resize', setVh);
   window.addEventListener('orientationchange', setVh);
+
+  // ---- Fullscreen (enter / leave without stretching - see the "Fullscreen" CSS block) ----
+  const fsRoot = document.documentElement;
+  const fsRequest = fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen;
+  const fsExit = document.exitFullscreen || document.webkitExitFullscreen;
+  const fsActive = () => Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+  function toggleFullscreen() {
+    try {
+      const p = fsActive() ? fsExit.call(document) : fsRequest.call(fsRoot, { navigationUI: 'hide' });
+      if (p && p.catch) p.catch((err) => console.warn('[Twistle] Fullscreen refused:', err && err.message));
+    } catch (err) {
+      console.warn('[Twistle] Fullscreen failed:', err);
+    }
+  }
+  function onFullscreenChange() {
+    const on = fsActive();
+    fsRoot.classList.toggle('is-fs', on);
+    const btn = document.getElementById('fsBtn');
+    if (btn) { btn.title = on ? 'Exit fullscreen' : 'Fullscreen'; btn.setAttribute('aria-label', btn.title); }
+    setVh();
+    // Let the browser finish resizing, then refit the tiles (the grid's ResizeObserver also catches this).
+    requestAnimationFrame(() => { setVh(); window.dispatchEvent(new Event('resize')); });
+  }
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+  if (fsRequest && fsExit) {
+    const fsBtn = document.getElementById('fsBtn');
+    fsBtn.hidden = false; // iPhone Safari has no fullscreen API for pages, so the button stays hidden there
+    fsBtn.addEventListener('click', toggleFullscreen);
+    document.addEventListener('keydown', (e) => {
+      const t = e.target;
+      const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'f' || e.key === 'F')) toggleFullscreen();
+    });
+  }
 
   const socket = io();
   const $ = (id) => document.getElementById(id);
@@ -771,6 +824,7 @@
   // ---- Connection status ----
   socket.on('server:config', (cfg) => {
     if (cfg.defaultUsername) $('tiktokUsername').value = cfg.defaultUsername;
+    $('keyWarn').hidden = cfg.hasEnvSignKey !== false;
     const missing = (cfg.symbols || []).filter((id) => !SYMBOLS[id]);
     if (missing.length) console.warn('[Twistle] This page has no artwork for: ' + missing.join(', ') + ' - it is out of date. Replace public/index.html with the newest version.');
   });
@@ -1040,7 +1094,7 @@
   // Host actions (no auth needed)
   // ---------------------------------------------------------------------
   $('connectBtn').addEventListener('click', () => {
-    socket.emit('host:connectTikTok', { username: $('tiktokUsername').value, signApiKey: $('signApiKey').value });
+    socket.emit('host:connectTikTok', { username: $('tiktokUsername').value });
   });
   $('disconnectBtn').addEventListener('click', () => socket.emit('host:disconnectTikTok'));
   $('startGameBtn').addEventListener('click', () => socket.emit('host:startGame'));
