@@ -127,23 +127,17 @@
   }
   .guess-badge[hidden] { display: none; }
 
-  /* The guess grid. Each guess is a block of letter tiles plus a block of symbols (one per letter).
-     JS (applyLayout) measures the width and picks the tile size and one of two layouts from the word length,
-     so it always stays comfortable to read:
-       .mode-side   letters on the left, symbols on the right (shorter words)
-       .mode-stack  symbols directly under the letters; very long words wrap onto extra lines */
+  /* The guess grid. Each guess is a block of letter tiles plus a block of symbols (one per letter),
+     always side by side on the same row. JS (applyLayout) measures the width and shrinks the tile
+     size to fit however many letters the current word length needs - long words just get smaller
+     tiles, the symbols never drop to a line of their own. */
   .grid {
     --cell: 40px; --cols: 5; --gap: 4px; --sp: 16px;
     width: 100%; max-width: 1100px; margin: 0 auto;
     display: flex; flex-direction: column; align-items: center; row-gap: 6px;
   }
-  .grid.mode-stack { row-gap: 16px; }
   .grow { display: flex; align-items: center; justify-content: center; gap: var(--sp); }
-  .mode-stack .grow { flex-direction: column; gap: calc(var(--gap) + 3px); }
   .lets, .syms { display: grid; grid-template-columns: repeat(var(--cols), var(--cell)); gap: var(--gap); justify-content: center; }
-  .mode-stack .syms { position: relative; }
-  .mode-stack .syms::before { content: ''; position: absolute; inset: -4px -6px; border-radius: 14px; background: rgba(140,150,255,0.07); border: 1px solid rgba(140,150,255,0.11); }
-  .mode-stack .syms > * { position: relative; }
   .tile {
     width: var(--cell); height: var(--cell); border-radius: calc(var(--cell) * 0.22);
     display: flex; align-items: center; justify-content: center;
@@ -882,16 +876,15 @@
     const m = document.querySelector('main');
     requestAnimationFrame(() => m.scrollTo({ top: m.scrollHeight, behavior: 'smooth' }));
   }
-  // ---- Adaptive layout: pick tile size + arrangement from the word length and the width we have ----
-  // Smallest tile (px) we accept for the letters-beside-symbols layout. Wide windows demand bigger tiles
-  // (a wide capture gets shrunk onto viewers' phones); narrow phones settle for 26px.
-  const sideMin = (W) => Math.min(44, Math.max(26, W * 0.055));
-  const STACK_MIN = 30;  // smallest tile (px) before a stacked line is wrapped onto another line
-  const CELL_CAP = 72;   // biggest tile (px) so short words don't look oversized
-  const SIDE_GAP = 16;   // space between the letters and the symbols in the side layout
+  // ---- Adaptive layout: letters + symbols always share one row; only the tile size adapts ----
+  const CELL_FLOOR = 6;   // absolute smallest tile (px) - only hit on the longest words / narrowest screens
+  const STACK_MIN = 30;   // used only by fitLine() below, for the round-end revealed-answer row
+  const CELL_CAP = 72;    // biggest tile (px) so short words don't look oversized
+  const SIDE_GAP = 16;    // space between the letters block and the symbols block, when there's room
   const px = (n) => Math.floor(n * 10) / 10;
 
-  /** Fit `n` equal cells on as few lines as possible while keeping each at least STACK_MIN wide. */
+  /** Fit `n` equal cells on as few lines as possible while keeping each at least STACK_MIN wide.
+      Only used for the single-row revealed-answer tiles at round end, not the guess grid. */
   function fitLine(n, W, cap, gap) {
     let lines = 1, cols = n, cell;
     for (;;) {
@@ -903,17 +896,23 @@
     return { cell: px(Math.max(14, Math.min(cap, cell))), cols };
   }
 
+  /** Letters and symbols are 2n cells sharing one row. Solve for the tile size that fits them all
+      in the width we have; claw back space from the gaps first for long words before shrinking
+      below CELL_FLOOR, so a same-row layout is kept as long as it's physically possible. */
   function computeLayout(n, W) {
-    let gap = 4;
-    let side = (W - SIDE_GAP - (2 * n - 2) * gap) / (2 * n);
-    if (side >= sideMin(W)) {
-      if (side >= 44) { gap = 6; side = (W - SIDE_GAP - (2 * n - 2) * gap) / (2 * n); }
-      const cell = px(Math.min(CELL_CAP, side));
-      return { mode: 'side', cell, cols: n, gap, width: Math.ceil(2 * n * cell + (2 * n - 2) * gap + SIDE_GAP) };
+    let gap = 4, sideGap = SIDE_GAP;
+    let side = (W - sideGap - (2 * n - 2) * gap) / (2 * n);
+    if (side >= 44) {
+      gap = 6;
+      side = (W - sideGap - (2 * n - 2) * gap) / (2 * n);
+    } else if (side < 12) {
+      // Long word / narrow screen: claw back space from the gaps first, rather
+      // than ever wrapping the symbols onto their own line.
+      gap = 2; sideGap = Math.max(8, SIDE_GAP - 6);
+      side = (W - sideGap - (2 * n - 2) * gap) / (2 * n);
     }
-    let f = fitLine(n, W, 56, gap);
-    if (f.cell >= 44) { gap = 6; f = fitLine(n, W, 56, gap); }
-    return { mode: 'stack', cell: f.cell, cols: f.cols, gap, width: Math.ceil(f.cols * f.cell + (f.cols - 1) * gap) };
+    const cell = px(Math.max(CELL_FLOOR, Math.min(CELL_CAP, side)));
+    return { mode: 'side', cell, cols: n, gap, width: Math.ceil(2 * n * cell + (2 * n - 2) * gap + sideGap) };
   }
 
   let layoutN = 5;
@@ -925,8 +924,6 @@
     gridEl.style.setProperty('--cell', L.cell + 'px');
     gridEl.style.setProperty('--cols', L.cols);
     gridEl.style.setProperty('--gap', L.gap + 'px');
-    gridEl.classList.toggle('mode-side', L.mode === 'side');
-    gridEl.classList.toggle('mode-stack', L.mode === 'stack');
     $('board').style.setProperty('--content-w', L.width + 'px');
     // The revealed answer gets its own comfortable size (and wraps for very long words).
     const A = fitLine(layoutN, W, 60, 5);
